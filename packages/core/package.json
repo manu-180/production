@@ -15,11 +15,13 @@
     "@anthropic-ai/sdk": "^0.32.1",
     "@conductor/db": "workspace:*",
     "gray-matter": "^4.0.3",
+    "js-yaml": "^4.1.0",
     "pino": "^9.6.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.105.1",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
