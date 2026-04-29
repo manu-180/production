@@ -3,7 +3,7 @@ import pino, { type Logger, type LoggerOptions } from "pino";
 export type { Logger };
 
 const defaultOptions: LoggerOptions = {
-  level: process.env.LOG_LEVEL ?? "info",
+  level: process.env["LOG_LEVEL"] ?? "info",
 };
 
 /**
@@ -13,7 +13,7 @@ const defaultOptions: LoggerOptions = {
  */
 export function createLogger(name: string, opts?: LoggerOptions): Logger {
   const transport =
-    process.env.NODE_ENV !== "production"
+    process.env["NODE_ENV"] !== "production"
       ? {
           target: "pino-pretty",
           options: { colorize: true, translateTime: "SYS:standard" },

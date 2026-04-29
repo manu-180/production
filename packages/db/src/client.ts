@@ -14,8 +14,8 @@ let _client: SupabaseClient<Database> | null = null;
 export function getSupabaseClient(): SupabaseClient<Database> {
   if (_client) return _client;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env["NEXT_PUBLIC_SUPABASE_URL"];
+  const key = process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"];
 
   if (!url || !key) {
     throw new Error(
@@ -32,8 +32,8 @@ export function getSupabaseClient(): SupabaseClient<Database> {
  * Only use in trusted server contexts (worker, edge functions).
  */
 export function getSupabaseServiceClient(): SupabaseClient<Database> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env["NEXT_PUBLIC_SUPABASE_URL"];
+  const key = process.env["SUPABASE_SERVICE_ROLE_KEY"];
 
   if (!url || !key) {
     throw new Error(
