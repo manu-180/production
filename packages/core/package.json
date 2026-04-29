@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@conductor/db": "workspace:*",
     "gray-matter": "^4.0.3",
     "pino": "^9.6.0",
