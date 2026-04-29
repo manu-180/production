@@ -1,12 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { GuardianMetrics } from "@/lib/guardian";
 import { cn } from "@/lib/utils";
 
-export interface GuardianMetrics {
-  totalInterventions: number;
-  byStrategy: Record<"rule" | "default" | "llm", number>;
-  averageConfidence: number;
-  overrideRate: number;
-}
+export type { GuardianMetrics };
 
 interface Props {
   metrics: GuardianMetrics;

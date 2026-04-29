@@ -1,9 +1,5 @@
-import type { GuardianDecisionRow } from "@/app/api/runs/[id]/guardian/decisions/route";
 import { DecisionDetailDialog, StrategyBadge } from "@/components/guardian/decision-detail-dialog";
-import {
-  type GuardianMetrics,
-  GuardianMetricsWidget,
-} from "@/components/guardian/guardian-metrics-widget";
+import { GuardianMetricsWidget } from "@/components/guardian/guardian-metrics-widget";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  EMPTY_METRICS,
+  type GuardianDecisionRow,
+  type GuardianMetrics,
+  computeMetrics,
+  mapDecisionRow,
+} from "@/lib/guardian";
 import { createServiceClient } from "@conductor/db";
 import { ArrowLeftIcon, ShieldIcon } from "lucide-react";
 import Link from "next/link";
@@ -33,32 +36,14 @@ async function fetchDecisionsData(runId: string): Promise<{
   // Verify run exists
   const { data: run } = await db.from("runs").select("id").eq("id", runId).single();
   if (run === null) {
-    return {
-      runExists: false,
-      metrics: {
-        totalInterventions: 0,
-        byStrategy: { rule: 0, default: 0, llm: 0 },
-        averageConfidence: 0,
-        overrideRate: 0,
-      },
-      decisions: [],
-    };
+    return { runExists: false, metrics: EMPTY_METRICS, decisions: [] };
   }
 
   // Get prompt execution IDs
   const { data: executions } = await db.from("prompt_executions").select("id").eq("run_id", runId);
 
   if (executions === null || executions.length === 0) {
-    return {
-      runExists: true,
-      metrics: {
-        totalInterventions: 0,
-        byStrategy: { rule: 0, default: 0, llm: 0 },
-        averageConfidence: 0,
-        overrideRate: 0,
-      },
-      decisions: [],
-    };
+    return { runExists: true, metrics: EMPTY_METRICS, decisions: [] };
   }
 
   const executionIds = executions.map((e) => e.id);
@@ -70,58 +55,11 @@ async function fetchDecisionsData(runId: string): Promise<{
     .in("prompt_execution_id", executionIds)
     .order("created_at", { ascending: true });
 
-  const safeRows = rows ?? [];
+  const decisions: GuardianDecisionRow[] = (rows ?? []).map((row) =>
+    mapDecisionRow(row as Record<string, unknown>),
+  );
 
-  // Map to GuardianDecisionRow
-  const decisions: GuardianDecisionRow[] = safeRows.map((row) => {
-    const strat = row.strategy;
-    const safeStrategy: "rule" | "default" | "llm" =
-      strat === "rule" || strat === "default" || strat === "llm" ? strat : "default";
-
-    const result: GuardianDecisionRow = {
-      id: row.id,
-      promptExecutionId: row.prompt_execution_id,
-      questionDetected: row.question_detected ?? "",
-      decision: row.decision ?? "",
-      reasoning: row.reasoning ?? "",
-      confidence: row.confidence ?? 0,
-      strategy: safeStrategy,
-      requiresHumanReview: false,
-      overriddenByHuman: row.reviewed_by_human,
-      createdAt: row.created_at,
-    };
-
-    if (row.context_snippet !== null && row.context_snippet !== undefined) {
-      result.contextSnippet = row.context_snippet;
-    }
-    if (row.human_override !== null && row.human_override !== undefined) {
-      result.overrideResponse = row.human_override;
-    }
-
-    return result;
-  });
-
-  // Compute metrics
-  const byStrategy: Record<"rule" | "default" | "llm", number> = {
-    rule: 0,
-    default: 0,
-    llm: 0,
-  };
-  let confidenceSum = 0;
-  let reviewedCount = 0;
-
-  for (const d of decisions) {
-    byStrategy[d.strategy] += 1;
-    confidenceSum += d.confidence;
-    if (d.overriddenByHuman) reviewedCount += 1;
-  }
-
-  const metrics: GuardianMetrics = {
-    totalInterventions: decisions.length,
-    byStrategy,
-    averageConfidence: decisions.length > 0 ? confidenceSum / decisions.length : 0,
-    overrideRate: decisions.length > 0 ? reviewedCount / decisions.length : 0,
-  };
+  const metrics = computeMetrics(decisions);
 
   return { runExists: true, metrics, decisions };
 }

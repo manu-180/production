@@ -1,19 +1,13 @@
+import {
+  EMPTY_METRICS,
+  type GuardianMetrics,
+  computeMetrics,
+  mapDecisionRow,
+} from "@/lib/guardian";
 import { createServiceClient } from "@conductor/db";
 import { type NextRequest, NextResponse } from "next/server";
 
-interface GuardianMetrics {
-  totalInterventions: number;
-  byStrategy: Record<"rule" | "default" | "llm", number>;
-  averageConfidence: number;
-  overrideRate: number;
-}
-
-const EMPTY_METRICS: GuardianMetrics = {
-  totalInterventions: 0,
-  byStrategy: { rule: 0, default: 0, llm: 0 },
-  averageConfidence: 0,
-  overrideRate: 0,
-};
+export type { GuardianMetrics };
 
 export async function GET(
   _req: NextRequest,
@@ -39,7 +33,11 @@ export async function GET(
     .select("id")
     .eq("run_id", runId);
 
-  if (execError !== null || executions === null || executions.length === 0) {
+  if (execError !== null) {
+    return NextResponse.json({ error: execError.message }, { status: 500 });
+  }
+
+  if (executions === null || executions.length === 0) {
     return NextResponse.json(EMPTY_METRICS);
   }
 
@@ -51,38 +49,16 @@ export async function GET(
     .select("strategy, confidence, reviewed_by_human")
     .in("prompt_execution_id", executionIds);
 
-  if (decisionsError !== null || decisions === null || decisions.length === 0) {
+  if (decisionsError !== null) {
+    return NextResponse.json({ error: decisionsError.message }, { status: 500 });
+  }
+
+  if (decisions === null || decisions.length === 0) {
     return NextResponse.json(EMPTY_METRICS);
   }
 
-  const byStrategy: Record<"rule" | "default" | "llm", number> = {
-    rule: 0,
-    default: 0,
-    llm: 0,
-  };
-  let confidenceSum = 0;
-  let reviewedCount = 0;
-
-  for (const row of decisions) {
-    const strat = row.strategy;
-    if (strat === "rule" || strat === "default" || strat === "llm") {
-      byStrategy[strat] += 1;
-    } else {
-      byStrategy["default"] += 1;
-    }
-
-    const conf = row.confidence ?? 0;
-    confidenceSum += conf;
-
-    if (row.reviewed_by_human === true) reviewedCount += 1;
-  }
-
-  const metrics: GuardianMetrics = {
-    totalInterventions: decisions.length,
-    byStrategy,
-    averageConfidence: confidenceSum / decisions.length,
-    overrideRate: reviewedCount / decisions.length,
-  };
+  const rows = decisions.map((row) => mapDecisionRow(row as Record<string, unknown>));
+  const metrics = computeMetrics(rows);
 
   return NextResponse.json(metrics);
 }

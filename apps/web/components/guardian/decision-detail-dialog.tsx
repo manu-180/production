@@ -1,6 +1,5 @@
 "use client";
 
-import type { GuardianDecisionRow } from "@/app/api/runs/[id]/guardian/decisions/route";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { DialogTrigger } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { GuardianDecisionRow } from "@/lib/guardian";
 import { EyeIcon } from "lucide-react";
 import { useState } from "react";
 
