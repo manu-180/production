@@ -115,10 +115,16 @@ importers:
 
   packages/core:
     dependencies:
+      '@conductor/db':
+        specifier: workspace:*
+        version: link:../db
       pino:
         specifier: ^9.6.0
         version: 9.14.0
     devDependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.1
+        version: 2.105.1
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
