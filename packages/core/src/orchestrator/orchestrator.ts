@@ -16,24 +16,18 @@ import {
   ClaudeProcess,
   type ClaudeProcessOptions,
   type ExecutionResult,
+  isAssistantEvent,
 } from "../executor/index.js";
-import type { TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
-import type { Plan, PromptDefinition, RunEvent, TokenUsage } from "../types.js";
+import type { ClaudeStreamEvent, TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
+import type { GuardianRunner } from "../guardian/guardian-runner.js";
+import type { GuardianDecision, Plan, PromptDefinition, RunEvent, TokenUsage } from "../types.js";
 import { type ExecutionContext, addUsage, createExecutionContext } from "./execution-context.js";
 import { CancelledError, type PauseController } from "./pause-controller.js";
 import { ProgressEmitter } from "./progress-emitter.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase-stub interfaces (Guardian: phase 07, CheckpointManager: phase 08)
+// Phase-stub interfaces (CheckpointManager: phase 08)
 // ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Placeholder Guardian interface — accepted by the orchestrator but not yet
- * invoked. The full surface lands in phase 07.
- */
-export interface Guardian {
-  readonly name: string;
-}
 
 /**
  * Checkpoint manager — used to commit a git checkpoint after each successful
@@ -122,8 +116,12 @@ export interface OrchestratorOptions {
   pauseController: PauseController;
   /** Optional event tap (e.g. SSE). Errors thrown by the handler are swallowed. */
   onEvent?: (event: RunEvent) => void;
-  /** Stub — held but not invoked in this phase. */
-  guardian?: Guardian;
+  /**
+   * Guardian runner. When supplied, the orchestrator injects guidelines into
+   * each prompt and invokes the runner after every Claude turn so it can
+   * auto-answer questions on the user's behalf.
+   */
+  guardian?: GuardianRunner;
   /** Optional checkpoint manager (phase 08+). */
   checkpoint?: CheckpointManager;
 }
@@ -207,6 +205,86 @@ function errorMessage(err: unknown): string {
 async function backoff(attempt: number): Promise<void> {
   const delay = Math.min(2 ** attempt * 1000 + Math.random() * 1000, MAX_BACKOFF_MS);
   await new Promise<void>((resolve) => setTimeout(resolve, delay));
+}
+
+/**
+ * Sentinel error thrown when the Guardian intervenes too many times for a
+ * single prompt. Surfaced to callers via `GUARDIAN_LOOP` in the
+ * `prompt_executions.error_code` column and the run-level error.
+ */
+export class GuardianLoopError extends Error {
+  readonly code = "GUARDIAN_LOOP" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "GuardianLoopError";
+  }
+}
+
+/**
+ * Walks the captured stream events to extract the text of the last assistant
+ * message. Falls back to the executor's top-level `result` field when no
+ * assistant text is present in the captured events (e.g. when capture is
+ * disabled or the stream only contained tool blocks).
+ */
+function extractLastAssistantText(result: ExecutionResult): {
+  text: string;
+  hasToolUse: boolean;
+} {
+  let lastText = "";
+  let hasToolUse = false;
+
+  for (const event of result.capturedEvents) {
+    if (!isAssistantEvent(event)) continue;
+    const blocks = event.message.content;
+    let textForThisMessage = "";
+    let toolUseInThisMessage = false;
+    for (const block of blocks) {
+      const b = block as { type: string; text?: unknown };
+      if (b.type === "text" && typeof b.text === "string") {
+        textForThisMessage += textForThisMessage.length > 0 ? `\n${b.text}` : b.text;
+      } else if (b.type === "tool_use") {
+        toolUseInThisMessage = true;
+      }
+    }
+    if (textForThisMessage.length > 0 || toolUseInThisMessage) {
+      lastText = textForThisMessage;
+      hasToolUse = toolUseInThisMessage;
+    }
+  }
+
+  return { text: lastText, hasToolUse };
+}
+
+/**
+ * Returns the last `n` assistant message text bodies from the captured events,
+ * oldest-first. Used to give the Guardian decision strategies a bit of context
+ * beyond the very last turn.
+ */
+function extractRecentAssistantTexts(events: ClaudeStreamEvent[], n: number): string[] {
+  const texts: string[] = [];
+  for (const event of events) {
+    if (!isAssistantEvent(event)) continue;
+    let text = "";
+    for (const block of event.message.content) {
+      const b = block as { type: string; text?: unknown };
+      if (b.type === "text" && typeof b.text === "string") {
+        text += text.length > 0 ? `\n${b.text}` : b.text;
+      }
+    }
+    if (text.length > 0) {
+      texts.push(text);
+    }
+  }
+  return texts.slice(-n);
+}
+
+/**
+ * First N characters of the prompt content, used as context for the decision
+ * strategies. Trimmed and collapsed so the snippet is readable in logs.
+ */
+function buildPromptContext(prompt: PromptDefinition, max = 200): string {
+  const flat = prompt.content.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
 /**
@@ -331,8 +409,7 @@ export class Orchestrator {
   private readonly db: DbClient;
   private readonly pauseController: PauseController;
   private readonly onEvent?: (event: RunEvent) => void;
-  /** Held intentionally — Guardian wiring lands in phase 07. */
-  private readonly guardian?: Guardian;
+  private readonly guardian?: GuardianRunner;
   private readonly checkpoint?: CheckpointManager;
   private readonly emitter: ProgressEmitter;
   private readonly skipped = new Map<string, string>();
@@ -496,121 +573,220 @@ export class Orchestrator {
         }
 
         try {
-          const claudeOpts = buildClaudeOptions(prompt, context);
-          const proc = new ClaudeProcess(claudeOpts, buildEnv());
-          await proc.start();
-
-          // Race the process against the pause controller's cancel flag.
-          // If the user cancels mid-execution, we kill the spawned Claude
-          // process instead of waiting for the next prompt boundary.
-          const pauseController = this.pauseController;
-          const cancelPromise = new Promise<never>((_resolve, reject) => {
-            const checkCancel = setInterval(() => {
-              if (pauseController.isCancelled()) {
-                clearInterval(checkCancel);
-                void proc.kill("user cancelled");
-                reject(new CancelledError(pauseController.getCancelReason()));
-              }
-            }, 500);
-            void proc.wait().finally(() => clearInterval(checkCancel));
-          });
-
+          // Guardian intervention loop. Every iteration spawns a Claude
+          // process and waits for it. On success, the Guardian (if
+          // configured) inspects the last assistant message; when it detects
+          // a question it returns a `guardianResponse` we resume the session
+          // with as the next prompt. The loop ends when either Guardian
+          // declines to intervene (success path) or it hits the intervention
+          // ceiling (terminal `GUARDIAN_LOOP` failure).
+          let guardianInterventionCount = 0;
+          let nextPromptText: string | null = null;
+          let nextResumeSessionId: string | null = null;
           let result: ExecutionResult;
-          try {
-            result = await Promise.race([proc.wait(), cancelPromise]);
-          } catch (raceErr) {
-            if (raceErr instanceof CancelledError) {
-              await updatePromptExecution(executionId, "failed", null, "", this.db, {
-                code: "CANCELLED",
-                message: raceErr.message,
-              });
-              await updateRunStatus(this.runId, "cancelled", this.db);
-              return {
-                status: "cancelled",
-                totalCostUsd: context.accumulatedCostUsd,
-                totalDurationMs: Date.now() - startTime,
-                completedPrompts: context.currentPromptIndex,
-              };
-            }
-            throw raceErr;
-          }
 
-          // Stream tool_use / tool_result events to the progress emitter.
-          for (const event of result.capturedEvents) {
-            if (event.type === "tool_use") {
-              await this.emit({
-                type: "prompt.tool_use",
-                promptId: prompt.id,
-                tool: event.name,
-                input: event.input,
-              });
-            } else if (event.type === "tool_result") {
-              await this.emit({
-                type: "prompt.tool_result",
-                promptId: prompt.id,
-                tool: event.tool_use_id,
-                output: event.content,
-              });
-            }
-          }
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const baseOpts = buildClaudeOptions(prompt, context);
+            const claudeOpts: ClaudeProcessOptions = { ...baseOpts };
 
-          if (result.finalStatus === "success") {
-            addUsage(context, mapTokenUsage(result.usage), result.costUsd);
-
-            let sha = "";
-            if (this.checkpoint) {
-              try {
-                sha = await this.checkpoint.commit(prompt.id, executionId);
-                lastGoodSha = sha;
-                await this.emit({
-                  type: "prompt.checkpoint_created",
-                  promptId: prompt.id,
-                  sha,
-                });
-              } catch (err) {
-                console.error(
-                  `[Orchestrator] checkpoint.commit failed for prompt ${prompt.id}:`,
-                  err,
-                );
+            if (nextPromptText !== null) {
+              // Guardian is feeding a follow-up answer back into the same
+              // session — override prompt + resumeSessionId regardless of
+              // what `buildClaudeOptions` produced.
+              claudeOpts.prompt = nextPromptText;
+              if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
+                claudeOpts.resumeSessionId = nextResumeSessionId;
               }
+            } else if (this.guardian) {
+              // First iteration of this attempt — inject Guardian guidelines
+              // into the prompt body so Claude has the rules from the start.
+              const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
+              claudeOpts.prompt = injection.prompt;
             }
 
-            await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
+            const proc = new ClaudeProcess(claudeOpts, buildEnv());
+            await proc.start();
 
-            if (result.sessionId.length > 0) {
-              context.lastSessionId = result.sessionId;
-            }
-
-            await this.emit({
-              type: "prompt.completed",
-              promptId: prompt.id,
-              tokens: mapTokenUsage(result.usage),
-              costUsd: result.costUsd,
+            // Race the process against the pause controller's cancel flag.
+            // If the user cancels mid-execution, we kill the spawned Claude
+            // process instead of waiting for the next prompt boundary.
+            const pauseController = this.pauseController;
+            const cancelPromise = new Promise<never>((_resolve, reject) => {
+              const checkCancel = setInterval(() => {
+                if (pauseController.isCancelled()) {
+                  clearInterval(checkCancel);
+                  void proc.kill("user cancelled");
+                  reject(new CancelledError(pauseController.getCancelReason()));
+                }
+              }, 500);
+              void proc.wait().finally(() => clearInterval(checkCancel));
             });
 
-            context.currentPromptIndex++;
-            succeeded = true;
+            try {
+              result = await Promise.race([proc.wait(), cancelPromise]);
+            } catch (raceErr) {
+              if (raceErr instanceof CancelledError) {
+                await updatePromptExecution(executionId, "failed", null, "", this.db, {
+                  code: "CANCELLED",
+                  message: raceErr.message,
+                });
+                await updateRunStatus(this.runId, "cancelled", this.db);
+                return {
+                  status: "cancelled",
+                  totalCostUsd: context.accumulatedCostUsd,
+                  totalDurationMs: Date.now() - startTime,
+                  completedPrompts: context.currentPromptIndex,
+                };
+              }
+              throw raceErr;
+            }
+
+            // Stream tool_use / tool_result events to the progress emitter.
+            for (const event of result.capturedEvents) {
+              if (event.type === "tool_use") {
+                await this.emit({
+                  type: "prompt.tool_use",
+                  promptId: prompt.id,
+                  tool: event.name,
+                  input: event.input,
+                });
+              } else if (event.type === "tool_result") {
+                await this.emit({
+                  type: "prompt.tool_result",
+                  promptId: prompt.id,
+                  tool: event.tool_use_id,
+                  output: event.content,
+                });
+              }
+            }
+
+            if (result.finalStatus !== "success") {
+              // Non-success terminal status from the Claude process. Bubble
+              // up to the outer `catch` so retry/backoff kicks in.
+              const procErrMsg =
+                result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
+              throw new Error(procErrMsg);
+            }
+
+            // Always accumulate usage for completed turns — even mid-Guardian
+            // iterations spent real tokens.
+            addUsage(context, mapTokenUsage(result.usage), result.costUsd);
+
+            // Guardian wiring: inspect the last assistant message and decide
+            // whether to feed a follow-up back into the same session.
+            if (this.guardian) {
+              const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
+              const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
+              const promptContext = buildPromptContext(prompt);
+
+              // Note: the executor does not surface a top-level `stopReason`,
+              // so we omit it here. The detector falls back to other signals
+              // (heuristics on the message text + `hasToolUse`) when stopReason
+              // is missing.
+              const intervention = await this.guardian.checkAndDecide({
+                lastAssistantMessage,
+                hasToolUse,
+                promptContext,
+                recentMessages,
+                currentInterventionCount: guardianInterventionCount,
+              });
+
+              if (intervention.loopLimitReached) {
+                throw new GuardianLoopError("Guardian exceeded maximum interventions");
+              }
+
+              if (intervention.intervened && intervention.guardianResponse) {
+                const decision = intervention.decision;
+                const detection = intervention.detectionResult;
+                if (decision && detection) {
+                  const guardianDecision: GuardianDecision = {
+                    id: `${executionId}:gi:${intervention.interventionCount}`,
+                    promptExecutionId: executionId,
+                    questionDetected: detection.extractedQuestion ?? lastAssistantMessage,
+                    reasoning: decision.reasoning,
+                    decision: decision.decision,
+                    confidence: decision.confidence,
+                    strategy: decision.strategy === "llm" ? "llm" : "heuristic",
+                    decidedAt: isoNow(),
+                  };
+                  await this.emit({
+                    type: "prompt.guardian_intervention",
+                    decision: guardianDecision,
+                  });
+                }
+
+                // Update lastSessionId so any later prompt that resumes this
+                // session does so from the most recent turn.
+                if (result.sessionId.length > 0) {
+                  context.lastSessionId = result.sessionId;
+                }
+
+                guardianInterventionCount = intervention.interventionCount;
+                nextPromptText = intervention.guardianResponse;
+                nextResumeSessionId = result.sessionId;
+                continue;
+              }
+            }
+
+            // No intervention required — the prompt is done.
             break;
           }
 
-          // Non-success terminal status from the Claude process.
-          const procErrMsg =
-            result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
-          throw new Error(procErrMsg);
+          // ── Successful prompt completion ──────────────────────────────
+          let sha = "";
+          if (this.checkpoint) {
+            try {
+              sha = await this.checkpoint.commit(prompt.id, executionId);
+              lastGoodSha = sha;
+              await this.emit({
+                type: "prompt.checkpoint_created",
+                promptId: prompt.id,
+                sha,
+              });
+            } catch (err) {
+              console.error(
+                `[Orchestrator] checkpoint.commit failed for prompt ${prompt.id}:`,
+                err,
+              );
+            }
+          }
+
+          await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
+
+          if (result.sessionId.length > 0) {
+            context.lastSessionId = result.sessionId;
+          }
+
+          await this.emit({
+            type: "prompt.completed",
+            promptId: prompt.id,
+            tokens: mapTokenUsage(result.usage),
+            costUsd: result.costUsd,
+          });
+
+          context.currentPromptIndex++;
+          succeeded = true;
+          break;
         } catch (err) {
           lastError = errorMessage(err);
+          // Guardian-loop failures are terminal — they signal a configuration
+          // or detection problem that more retries can't fix. Skip retry/
+          // backoff and break straight to the prompt-level failure path.
+          const isGuardianLoop = err instanceof GuardianLoopError;
+          const errCode = isGuardianLoop ? "GUARDIAN_LOOP" : "UNKNOWN";
           await updatePromptExecution(executionId, "failed", null, "", this.db, {
-            code: "UNKNOWN",
+            code: errCode,
             message: lastError,
           });
           await this.emit({
             type: "prompt.failed",
             promptId: prompt.id,
             error: lastError,
-            willRetry: attempt < maxAttempts,
+            willRetry: !isGuardianLoop && attempt < maxAttempts,
           });
 
-          if (attempt < maxAttempts) {
+          if (!isGuardianLoop && attempt < maxAttempts) {
             await backoff(attempt);
             attempt++;
             continue;
