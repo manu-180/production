@@ -30,6 +30,12 @@ describe("encrypt / decrypt", () => {
     );
   });
 
+  it("invalid key (non-hex chars) throws expected error on encrypt", () => {
+    expect(() => encrypt("data", "g".repeat(64))).toThrow(
+      "Invalid encryption key: must be 32 bytes hex",
+    );
+  });
+
   it("tampered ciphertext causes decrypt to throw", () => {
     const { ciphertext, iv, tag } = encrypt("sensitive", VALID_KEY);
     const buf = Buffer.from(ciphertext, "base64");

@@ -11,7 +11,7 @@ export interface EncryptResult {
 }
 
 export function encrypt(plaintext: string, keyHex: string): EncryptResult {
-  if (keyHex.length !== 64) {
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) {
     throw new Error("Invalid encryption key: must be 32 bytes hex");
   }
 
@@ -29,7 +29,7 @@ export function encrypt(plaintext: string, keyHex: string): EncryptResult {
 }
 
 export function decrypt(ciphertext: string, iv: string, tag: string, keyHex: string): string {
-  if (keyHex.length !== 64) {
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) {
     throw new Error("Invalid encryption key: must be 32 bytes hex");
   }
 
@@ -44,6 +44,7 @@ export function decrypt(ciphertext: string, iv: string, tag: string, keyHex: str
 
     return Buffer.concat([decipher.update(ciphertextBuf), decipher.final()]).toString("utf8");
   } catch (err) {
-    throw new Error(`Decryption failed: ${(err as Error).message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Decryption failed: ${message}`);
   }
 }
