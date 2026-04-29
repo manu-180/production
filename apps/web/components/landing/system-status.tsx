@@ -7,8 +7,8 @@ type StatusResult = {
 };
 
 async function checkSupabase(): Promise<StatusResult> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env["NEXT_PUBLIC_SUPABASE_URL"];
+  const key = process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"];
 
   if (!url || !key) {
     return { label: "DB not configured", ok: null };
