@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@conductor/db": "workspace:*",
     "pino": "^9.6.0"
   },
   "devDependencies": {

@@ -12,7 +12,10 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "format": "biome format --write .",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "db:types": "bash packages/db/scripts/gen-types.sh",
+    "db:reset": "pnpm dlx supabase db reset",
+    "db:push": "pnpm dlx supabase db push"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
