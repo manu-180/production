@@ -25,3 +25,13 @@ export type {
   GuardianMode,
   GuardianRunnerConfig,
 } from "./guardian-runner.js";
+
+export { GuardianAuditLog } from "./audit-log.js";
+export type {
+  AuditLogResult,
+  DbClient as GuardianDbClient,
+  DbTable as GuardianDbTable,
+  GuardianDecisionRecord,
+  GuardianDecisionRow,
+  GuardianMetrics,
+} from "./audit-log.js";

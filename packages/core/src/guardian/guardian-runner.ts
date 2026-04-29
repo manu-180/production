@@ -17,6 +17,7 @@
  * the per-prompt counter and passes it in on each call.
  */
 import { type Logger, createLogger } from "../logger.js";
+import { type DbClient, GuardianAuditLog } from "./audit-log.js";
 import { DecisionEngine, type DecisionInput, type DecisionResult } from "./decision-engine.js";
 import {
   type DetectionInput,
@@ -50,6 +51,19 @@ export interface GuardianRunnerConfig {
   maxGuardianInterventions?: number;
   /** Operating mode. Defaults to `'auto'`. */
   mode?: GuardianMode;
+  /**
+   * Optional DB client used to persist every Guardian decision via
+   * {@link GuardianAuditLog}. When omitted, Guardian runs without auditing
+   * (useful for tests and dry-run modes). Must be paired with
+   * `promptExecutionId` to actually log anything.
+   */
+  db?: DbClient;
+  /**
+   * The current `prompt_executions.id` the runner is intervening on. Required
+   * to attribute audit-log rows to the correct prompt. Without it, no rows
+   * are written even when `db` is provided.
+   */
+  promptExecutionId?: string;
 }
 
 /**
@@ -111,12 +125,15 @@ export class GuardianRunner {
   private readonly maxInterventions: number;
   private readonly mode: GuardianMode;
   private readonly anthropicApiKey: string | undefined;
+  private readonly auditLog: GuardianAuditLog | undefined;
+  private readonly promptExecutionId: string | undefined;
 
   constructor(config?: GuardianRunnerConfig) {
     this.logger = createLogger("guardian:runner");
     this.anthropicApiKey = config?.anthropicApiKey;
     this.maxInterventions = config?.maxGuardianInterventions ?? DEFAULT_MAX_INTERVENTIONS;
     this.mode = config?.mode ?? DEFAULT_MODE;
+    this.promptExecutionId = config?.promptExecutionId;
 
     const detectorConfig =
       this.anthropicApiKey !== undefined ? { anthropicApiKey: this.anthropicApiKey } : undefined;
@@ -127,6 +144,8 @@ export class GuardianRunner {
     this.engine = new DecisionEngine(engineConfig);
 
     this.injector = new SystemPromptInjector();
+
+    this.auditLog = config?.db !== undefined ? new GuardianAuditLog(config.db) : undefined;
   }
 
   /** Returns the configured operating mode. */
@@ -243,6 +262,24 @@ export class GuardianRunner {
       },
       "Guardian intervened",
     );
+
+    // Best-effort audit-log persistence. Fire-and-forget so it never blocks the
+    // hot path; failures degrade to a logged warning inside the audit log.
+    if (this.auditLog !== undefined && this.promptExecutionId !== undefined) {
+      const auditRecord = {
+        promptExecutionId: this.promptExecutionId,
+        questionDetected: question,
+        ...(params.promptContext !== undefined ? { contextSnippet: params.promptContext } : {}),
+        decision: decision.decision,
+        reasoning: decision.reasoning,
+        confidence: decision.confidence,
+        strategy: decision.strategy,
+        requiresHumanReview: decision.requiresHumanReview,
+      };
+      this.auditLog.log(auditRecord).catch((err: unknown) => {
+        this.logger.warn({ err }, "guardian audit log fire-and-forget failed");
+      });
+    }
 
     return {
       intervened: true,
