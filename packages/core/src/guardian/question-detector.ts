@@ -79,7 +79,8 @@ export class QuestionDetector {
   private readonly logger: Logger;
   private readonly apiKey: string | undefined;
   private readonly model: string;
-  private clientCache: Anthropic | undefined;
+  private clientCache: Map<string, Anthropic> = new Map();
+  private _resolvedApiKey: string | undefined;
 
   constructor(config?: QuestionDetectorConfig) {
     this.logger = createLogger("guardian:question-detector");
@@ -137,7 +138,7 @@ export class QuestionDetector {
       const isQuestion = heuristicScore >= 0.5;
       return {
         isQuestion,
-        confidence: heuristicScore,
+        confidence: isQuestion ? heuristicScore : 1 - heuristicScore,
         extractedQuestion: isQuestion ? extractLikelyQuestion(input.lastAssistantMessage) : null,
         options: isQuestion ? extractOptions(input.lastAssistantMessage) : null,
         detectionMethod: "heuristic",
@@ -150,14 +151,25 @@ export class QuestionDetector {
       "ambiguous heuristic score — falling back to LLM",
     );
 
-    const llmResult = await this.callLlm(input.lastAssistantMessage);
+    this._resolvedApiKey = apiKey;
+    let llmResult: Partial<DetectionResult>;
+    try {
+      llmResult = await this.callLlm(input.lastAssistantMessage);
+    } finally {
+      this._resolvedApiKey = undefined;
+    }
 
     const isQuestion = llmResult.isQuestion ?? false;
-    const llmConfidence = clamp01(llmResult.confidence ?? 0.5);
+    const rawConfidence = clamp01(llmResult.confidence ?? 0.5);
+    // Confidence semantics: always represent confidence in the verdict returned.
+    // The LLM reports confidence in its `isQuestion` claim — when it says "not a
+    // question", we surface that same confidence; the `1 - x` inversion only
+    // applies when we picked the verdict ourselves from a heuristic score.
+    const confidence = rawConfidence;
 
     return {
       isQuestion,
-      confidence: llmConfidence,
+      confidence,
       extractedQuestion: llmResult.extractedQuestion ?? null,
       options: llmResult.options ?? null,
       detectionMethod: "heuristic+llm",
@@ -206,34 +218,50 @@ export class QuestionDetector {
    * caller can degrade gracefully.
    */
   private async callLlm(message: string): Promise<Partial<DetectionResult>> {
-    const client = this.getClient(this.apiKey);
+    const apiKey = this._resolvedApiKey ?? this.apiKey;
+    const client = this.getClient(apiKey);
 
     const tryOnce = async (model: string): Promise<Partial<DetectionResult>> => {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 256,
-        system: SYSTEM_PROMPT,
-        messages: [
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12_000);
+      try {
+        const response = await client.messages.create(
           {
-            role: "user",
-            content: message,
+            model,
+            max_tokens: 256,
+            system: SYSTEM_PROMPT,
+            messages: [
+              {
+                role: "user",
+                content: message,
+              },
+            ],
           },
-        ],
-      });
+          { signal: controller.signal },
+        );
 
-      const text = extractTextFromResponse(response);
-      const parsed = safeParseJson(text);
-      if (!parsed) {
-        this.logger.warn({ text }, "LLM response was not valid JSON");
-        return { isQuestion: false };
+        const text = extractTextFromResponse(response);
+        const parsed = safeParseJson(text);
+        if (!parsed) {
+          this.logger.warn({ text }, "LLM response was not valid JSON");
+          return { isQuestion: false };
+        }
+
+        return {
+          isQuestion: Boolean(parsed.isQuestion),
+          extractedQuestion: parsed.extractedQuestion ?? null,
+          options: parsed.options ?? null,
+          confidence: clamp01(typeof parsed.confidence === "number" ? parsed.confidence : 0.5),
+        };
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          this.logger.warn({ model }, "LLM question-detector timed out");
+          return {};
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
       }
-
-      return {
-        isQuestion: Boolean(parsed.isQuestion),
-        extractedQuestion: parsed.extractedQuestion ?? null,
-        options: parsed.options ?? null,
-        confidence: clamp01(typeof parsed.confidence === "number" ? parsed.confidence : 0.5),
-      };
     };
 
     try {
@@ -256,11 +284,13 @@ export class QuestionDetector {
   }
 
   private getClient(apiKey: string | undefined): Anthropic {
-    if (this.clientCache) {
-      return this.clientCache;
+    const cacheKey = apiKey ?? "";
+    const cached = this.clientCache.get(cacheKey);
+    if (cached) {
+      return cached;
     }
     const client = new Anthropic({ apiKey });
-    this.clientCache = client;
+    this.clientCache.set(cacheKey, client);
     return client;
   }
 }
