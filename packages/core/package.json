@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@conductor/db": "workspace:*",
-    "pino": "^9.6.0"
+    "gray-matter": "^4.0.3",
+    "pino": "^9.6.0",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.105.1",

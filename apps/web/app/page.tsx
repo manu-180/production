@@ -1,3 +1,4 @@
+import { ClaudeAuthStatus } from "@/components/landing/claude-auth-status";
 import { LandingHero } from "@/components/landing/landing-hero";
 import { SystemStatus } from "@/components/landing/system-status";
 import { Suspense } from "react";
@@ -17,13 +18,26 @@ export default function HomePage() {
           <p className="text-xs text-muted-foreground uppercase tracking-widest font-mono">
             System Status
           </p>
-          <Suspense
-            fallback={
-              <div className="text-xs text-muted-foreground font-mono animate-pulse">Checking…</div>
-            }
-          >
-            <SystemStatus />
-          </Suspense>
+          <div className="flex flex-wrap gap-2 justify-center">
+            <Suspense
+              fallback={
+                <div className="text-xs text-muted-foreground font-mono animate-pulse">
+                  Checking…
+                </div>
+              }
+            >
+              <SystemStatus />
+            </Suspense>
+            <Suspense
+              fallback={
+                <div className="text-xs text-muted-foreground font-mono animate-pulse">
+                  Checking…
+                </div>
+              }
+            >
+              <ClaudeAuthStatus />
+            </Suspense>
+          </div>
         </div>
 
         {/* Footer */}
