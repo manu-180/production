@@ -150,7 +150,7 @@ export class QuestionDetector {
       "ambiguous heuristic score — falling back to LLM",
     );
 
-    const llmResult = await this.callLlm(input.lastAssistantMessage, apiKey);
+    const llmResult = await this.callLlm(input.lastAssistantMessage);
 
     const isQuestion = llmResult.isQuestion ?? false;
     const llmConfidence = clamp01(llmResult.confidence ?? 0.5);
@@ -205,8 +205,8 @@ export class QuestionDetector {
    * the parsed JSON. Any failure returns `{ isQuestion: false }` so the
    * caller can degrade gracefully.
    */
-  private async callLlm(message: string, apiKey: string): Promise<Partial<DetectionResult>> {
-    const client = this.getClient(apiKey);
+  private async callLlm(message: string): Promise<Partial<DetectionResult>> {
+    const client = this.getClient(this.apiKey);
 
     const tryOnce = async (model: string): Promise<Partial<DetectionResult>> => {
       const response = await client.messages.create({
@@ -255,14 +255,12 @@ export class QuestionDetector {
     }
   }
 
-  private getClient(apiKey: string): Anthropic {
-    if (this.clientCache && this.apiKey === apiKey) {
+  private getClient(apiKey: string | undefined): Anthropic {
+    if (this.clientCache) {
       return this.clientCache;
     }
     const client = new Anthropic({ apiKey });
-    if (this.apiKey === apiKey) {
-      this.clientCache = client;
-    }
+    this.clientCache = client;
     return client;
   }
 }
