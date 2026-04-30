@@ -1,57 +1,63 @@
+import { defineRoute, respond, respondError } from "@/lib/api";
+import { assertRunOwned } from "@/lib/api/run-utils";
 import { type GuardianDecisionRow, mapDecisionRow } from "@/lib/guardian";
-import { createServiceClient } from "@conductor/db";
-import { type NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 
 export type { GuardianDecisionRow };
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
-  const { id: runId } = await params;
-  const db = createServiceClient();
-
-  // Check run exists
-  const { data: run, error: runError } = await db
-    .from("runs")
-    .select("id")
-    .eq("id", runId)
-    .single();
-
-  if (runError !== null || run === null) {
-    return NextResponse.json({ error: "Run not found" }, { status: 404 });
-  }
-
-  // Get all prompt execution IDs for this run
-  const { data: executions, error: execError } = await db
-    .from("prompt_executions")
-    .select("id")
-    .eq("run_id", runId);
-
-  if (execError !== null) {
-    return NextResponse.json({ error: execError.message }, { status: 500 });
-  }
-
-  if (executions === null || executions.length === 0) {
-    return NextResponse.json([] as GuardianDecisionRow[]);
-  }
-
-  const executionIds = executions.map((e) => e.id);
-
-  // Get guardian decisions ordered oldest first
-  const { data: decisions, error: decisionsError } = await db
-    .from("guardian_decisions")
-    .select("*")
-    .in("prompt_execution_id", executionIds)
-    .order("created_at", { ascending: true });
-
-  if (decisionsError !== null) {
-    return NextResponse.json({ error: decisionsError.message }, { status: 500 });
-  }
-
-  const rows: GuardianDecisionRow[] = (decisions ?? []).map((row) =>
-    mapDecisionRow(row as Record<string, unknown>),
-  );
-
-  return NextResponse.json(rows);
+interface Params {
+  id: string;
 }
+
+/**
+ * GET /api/runs/:id/guardian/decisions — DEPRECATED legacy alias.
+ *
+ * Returns mapped GuardianDecisionRow[] (camelCase view-model) for the
+ * dashboard's existing consumers. Prefer the canonical
+ * GET /api/runs/:id/decisions which returns raw rows under
+ * `{ decisions: [...] }`. This path is kept while the dashboard migrates;
+ * remove once the last reference is gone.
+ */
+export const GET = defineRoute<undefined, undefined, Params>(
+  {},
+  async ({ user, traceId, params }) => {
+    const owned = await assertRunOwned(user.db, params.id, user.userId);
+    if (owned === null) {
+      return respondError("not_found", "Run not found", { traceId });
+    }
+
+    const { data: executions, error: execError } = await user.db
+      .from("prompt_executions")
+      .select("id")
+      .eq("run_id", owned.id);
+
+    if (execError !== null) {
+      return respondError("internal", "Failed to load executions", {
+        traceId,
+        details: { code: execError.code },
+      });
+    }
+
+    const executionIds = ((executions ?? []) as Array<{ id: string }>).map((e) => e.id);
+    if (executionIds.length === 0) {
+      return respond([] as GuardianDecisionRow[], { traceId });
+    }
+
+    const { data: decisions, error: decisionsError } = await user.db
+      .from("guardian_decisions")
+      .select("*")
+      .in("prompt_execution_id", executionIds)
+      .order("created_at", { ascending: true });
+
+    if (decisionsError !== null) {
+      return respondError("internal", "Failed to load decisions", {
+        traceId,
+        details: { code: decisionsError.code },
+      });
+    }
+
+    const rows = (decisions ?? []).map((row) => mapDecisionRow(row as Record<string, unknown>));
+    return respond(rows, { traceId });
+  },
+);

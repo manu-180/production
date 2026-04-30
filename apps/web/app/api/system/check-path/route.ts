@@ -1,48 +1,51 @@
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { type NextRequest, NextResponse } from "next/server";
+import { defineRoute, respond } from "@/lib/api";
+import { z } from "zod";
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const body: unknown = await req.json();
-  const rawPath =
-    typeof body === "object" && body !== null && "path" in body
-      ? (body as { path: unknown })["path"]
-      : undefined;
+export const dynamic = "force-dynamic";
 
-  const pathStr = typeof rawPath === "string" ? rawPath.trim() : null;
+const checkPathBodySchema = z.object({
+  path: z.string().trim().min(1, "path is required").max(2000),
+});
+type CheckPathBody = z.infer<typeof checkPathBodySchema>;
 
-  if (!pathStr) {
-    return NextResponse.json({ error: "path is required" }, { status: 400 });
-  }
-
-  try {
-    const info = await stat(pathStr);
-    const isDir = info.isDirectory();
-
-    let isWritable = false;
+/**
+ * POST /api/system/check-path — used by the run-trigger UI to validate a
+ * working directory before submitting. Auth-less because the onboarding
+ * page calls it before the dashboard is fully bootstrapped; the only
+ * information leaked is filesystem existence flags, which is intentional.
+ */
+export const POST = defineRoute<CheckPathBody>(
+  { auth: false, rateLimit: "general", bodySchema: checkPathBodySchema },
+  async ({ traceId, body }) => {
     try {
-      await access(pathStr, constants.W_OK);
-      isWritable = true;
-    } catch {
-      /* not writable */
-    }
+      const info = await stat(body.path);
+      const isDir = info.isDirectory();
 
-    let isGitRepo = false;
-    try {
-      await stat(join(pathStr, ".git"));
-      isGitRepo = true;
-    } catch {
-      /* not a git repo */
-    }
+      let isWritable = false;
+      try {
+        await access(body.path, constants.W_OK);
+        isWritable = true;
+      } catch {
+        /* not writable */
+      }
 
-    return NextResponse.json({ exists: true, isDir, isWritable, isGitRepo });
-  } catch {
-    return NextResponse.json({
-      exists: false,
-      isDir: false,
-      isWritable: false,
-      isGitRepo: false,
-    });
-  }
-}
+      let isGitRepo = false;
+      try {
+        await stat(join(body.path, ".git"));
+        isGitRepo = true;
+      } catch {
+        /* not a git repo */
+      }
+
+      return respond({ exists: true, isDir, isWritable, isGitRepo }, { traceId });
+    } catch {
+      return respond(
+        { exists: false, isDir: false, isWritable: false, isGitRepo: false },
+        { traceId },
+      );
+    }
+  },
+);

@@ -1,91 +1,81 @@
+import { defineRoute, respond, respondError } from "@/lib/api";
+import { assertRunOwned } from "@/lib/api/run-utils";
 import { GitManager } from "@conductor/core";
-import { createServiceClient } from "@conductor/db";
-import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-const BodySchema = z.object({
-  promptId: z.string().min(1),
-  sha: z.string().min(7), // git short SHAs are min 7 chars; full are 40
-});
+export const dynamic = "force-dynamic";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
-  const { id: runId } = await params;
-
-  // Parse body
-  let body: z.infer<typeof BodySchema>;
-  try {
-    const json = await req.json();
-    body = BodySchema.parse(json);
-  } catch (err) {
-    return NextResponse.json(
-      {
-        error: "Invalid request body",
-        details: err instanceof Error ? err.message : String(err),
-      },
-      { status: 400 },
-    );
-  }
-
-  const db = createServiceClient();
-
-  // Verify run exists, get working_dir
-  const { data: run, error: runErr } = await db
-    .from("runs")
-    .select("id, status, working_dir")
-    .eq("id", runId)
-    .single();
-
-  if (runErr !== null || run === null) {
-    return NextResponse.json({ error: "Run not found" }, { status: 404 });
-  }
-
-  // Verify the target sha belongs to a prompt_execution in this run
-  const { data: execution, error: execErr } = await db
-    .from("prompt_executions")
-    .select("id, prompt_id, checkpoint_sha")
-    .eq("run_id", runId)
-    .eq("prompt_id", body.promptId)
-    .eq("checkpoint_sha", body.sha)
-    .single();
-
-  if (execErr !== null || execution === null) {
-    return NextResponse.json({ error: "Checkpoint not found for this run" }, { status: 404 });
-  }
-
-  // Run git revert
-  const gitManager = new GitManager(run.working_dir, run.working_dir);
-
-  let revertSha: string;
-  try {
-    // First check it's a repo
-    const isRepo = await gitManager.isRepo();
-    if (!isRepo) {
-      return NextResponse.json(
-        { error: "Working directory is not a git repository" },
-        { status: 500 },
-      );
-    }
-    revertSha = await gitManager.revert(body.sha);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Conflict markers in the message → 409 Conflict
-    const isConflict = /conflict|CONFLICT/.test(message);
-    return NextResponse.json(
-      {
-        error: isConflict
-          ? "Revert produced conflicts; resolve manually"
-          : `Rollback failed: ${message}`,
-      },
-      { status: isConflict ? 409 : 500 },
-    );
-  }
-
-  return NextResponse.json({
-    success: true,
-    revertSha,
-    message: `Reverted ${body.sha.slice(0, 8)} as new commit ${revertSha.slice(0, 8)}`,
-  });
+interface Params {
+  id: string;
 }
+
+/**
+ * POST /api/runs/:id/rollback — revert a checkpoint as a new commit.
+ *
+ * Loose schema vs the strict `rollbackSchema` in `lib/validators/runs.ts` —
+ * this legacy path expects `{ promptId, sha }` (both required) so the worker
+ * can locate the matching prompt_execution. The strict schema there is a
+ * superset for future tooling that may pass only one of the two; we keep
+ * the loose form here for backwards compatibility.
+ */
+const legacyRollbackSchema = z.object({
+  promptId: z.string().min(1),
+  sha: z.string().min(7),
+});
+type LegacyRollback = z.infer<typeof legacyRollbackSchema>;
+
+export const POST = defineRoute<LegacyRollback, undefined, Params>(
+  { rateLimit: "mutation", bodySchema: legacyRollbackSchema },
+  async ({ user, traceId, body, params }) => {
+    const owned = await assertRunOwned(user.db, params.id, user.userId);
+    if (owned === null) {
+      return respondError("not_found", "Run not found", { traceId });
+    }
+
+    const { data: execution } = await user.db
+      .from("prompt_executions")
+      .select("id, prompt_id, checkpoint_sha")
+      .eq("run_id", owned.id)
+      .eq("prompt_id", body.promptId)
+      .eq("checkpoint_sha", body.sha)
+      .maybeSingle();
+
+    if (execution === null) {
+      return respondError("not_found", "Checkpoint not found for this run", { traceId });
+    }
+
+    const git = new GitManager(owned.working_dir, owned.working_dir);
+    let revertSha: string;
+    try {
+      if (!(await git.isRepo())) {
+        return respondError("internal", "Working directory is not a git repository", {
+          traceId,
+          details: { workingDir: owned.working_dir },
+        });
+      }
+      revertSha = await git.revert(body.sha);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isConflict = /conflict/i.test(message);
+      if (isConflict) {
+        return respondError("conflict", "Revert produced conflicts; resolve manually", {
+          traceId,
+          details: { message },
+        });
+      }
+      return respondError("internal", `Rollback failed: ${message}`, {
+        traceId,
+        details: { message },
+      });
+    }
+
+    return respond(
+      {
+        success: true,
+        revertSha,
+        message: `Reverted ${body.sha.slice(0, 8)} as new commit ${revertSha.slice(0, 8)}`,
+      },
+      { traceId },
+    );
+  },
+);

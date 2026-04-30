@@ -1,4 +1,11 @@
-// Shared type (duplicated across API routes and page — centralize here)
+// Shared type (duplicated across API routes and page — centralize here).
+//
+// Note on naming: the DB columns are `reviewed_by_human` (bool) and
+// `human_override` (text, nullable). The view-model camelCase keeps
+// `overriddenByHuman`/`overrideResponse` for backwards compatibility with the
+// dashboard and existing consumers. `overriddenByHuman` is derived as
+// `reviewed_by_human === true && human_override !== null` so a "reviewed but
+// not overridden" decision (acknowledged but accepted) reads correctly.
 export interface GuardianDecisionRow {
   id: string;
   promptExecutionId: string;
@@ -45,6 +52,7 @@ export function mapDecisionRow(row: Record<string, unknown>): GuardianDecisionRo
 
   const rawContextSnippet = row["context_snippet"];
   const rawHumanOverride = row["human_override"];
+  const reviewedByHuman = row["reviewed_by_human"] === true;
 
   return {
     id: String(row["id"] ?? ""),
@@ -56,7 +64,11 @@ export function mapDecisionRow(row: Record<string, unknown>): GuardianDecisionRo
     confidence,
     strategy,
     requiresHumanReview: row["requires_human_review"] === true,
-    overriddenByHuman: row["reviewed_by_human"] === true, // null-safe: only true if explicitly true
+    // "Overridden" = reviewed AND a human response was recorded.
+    // A reviewed-but-empty decision means the human acknowledged without
+    // changing course; we don't surface that as overridden.
+    overriddenByHuman:
+      reviewedByHuman && rawHumanOverride !== null && rawHumanOverride !== undefined,
     overrideResponse: rawHumanOverride ? String(rawHumanOverride) : undefined,
     createdAt: String(row["created_at"] ?? ""),
   };
