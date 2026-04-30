@@ -132,6 +132,71 @@ export class GitManager {
     }
   }
 
+  /**
+   * Returns numstat output: array of { added, removed, path } per changed file.
+   * Renames have format "old => new" in path. Binary files have "-" in added/removed.
+   */
+  async getNumstat(
+    fromSha: string,
+    toSha: string,
+  ): Promise<Array<{ added: number; removed: number; path: string }>> {
+    this.guard();
+    try {
+      const raw = await this.git.raw(["diff", "--numstat", fromSha, toSha]);
+      return raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split("\t");
+          const addedStr = parts[0];
+          const removedStr = parts[1];
+          const pathParts = parts.slice(2);
+          const added = addedStr === "-" ? 0 : Number.parseInt(addedStr ?? "0", 10);
+          const removed = removedStr === "-" ? 0 : Number.parseInt(removedStr ?? "0", 10);
+          return {
+            added: Number.isNaN(added) ? 0 : added,
+            removed: Number.isNaN(removed) ? 0 : removed,
+            path: pathParts.join("\t"),
+          };
+        });
+    } catch (err) {
+      throw wrap("getNumstat", err);
+    }
+  }
+
+  /**
+   * Returns name-status output: array of { status, path, oldPath? }.
+   * Status codes: A (added), M (modified), D (deleted), R (renamed), C (copied), T (type changed).
+   */
+  async getNameStatus(
+    fromSha: string,
+    toSha: string,
+  ): Promise<Array<{ status: string; path: string; oldPath?: string }>> {
+    this.guard();
+    try {
+      const raw = await this.git.raw(["diff", "--name-status", fromSha, toSha]);
+      return raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.split("\t");
+          const code = parts[0] ?? "";
+          // Renames/copies look like "R100\told\tnew" — code starts with R or C.
+          if (code.startsWith("R") || code.startsWith("C")) {
+            const letter = code[0] ?? "";
+            return {
+              status: letter,
+              oldPath: parts[1] ?? "",
+              path: parts[2] ?? "",
+            };
+          }
+          return { status: code, path: parts.slice(1).join("\t") };
+        });
+    } catch (err) {
+      throw wrap("getNameStatus", err);
+    }
+  }
+
   /** Returns git status (detects dirty working tree). */
   async getStatus(): Promise<StatusResult> {
     this.guard();
