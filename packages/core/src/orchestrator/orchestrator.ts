@@ -39,6 +39,23 @@ export interface CheckpointManager {
   commit(promptId: string, executionId: string): Promise<string>;
   /** Reverts the working tree to the given SHA. */
   rollback(sha: string): Promise<void>;
+  /**
+   * Optional: set per-prompt execution stats just before {@link commit}, so
+   * implementations can include them in the commit message body. Backwards-
+   * compatible: callers that don't supply an implementation are unaffected.
+   */
+  setExecutionMeta?(
+    promptId: string,
+    meta: {
+      tokensIn: number;
+      tokensOut: number;
+      tokensCache: number;
+      costUsd: number;
+      durationMs: number;
+      toolsUsed: string[];
+      guardianDecisions: number;
+    },
+  ): void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -584,6 +601,7 @@ export class Orchestrator {
           let nextPromptText: string | null = null;
           let nextResumeSessionId: string | null = null;
           let result: ExecutionResult;
+          const toolsUsedThisPrompt = new Set<string>();
 
           // eslint-disable-next-line no-constant-condition
           while (true) {
@@ -645,6 +663,7 @@ export class Orchestrator {
             // Stream tool_use / tool_result events to the progress emitter.
             for (const event of result.capturedEvents) {
               if (event.type === "tool_use") {
+                toolsUsedThisPrompt.add(event.name);
                 await this.emit({
                   type: "prompt.tool_use",
                   promptId: prompt.id,
@@ -736,6 +755,28 @@ export class Orchestrator {
           // ── Successful prompt completion ──────────────────────────────
           let sha = "";
           if (this.checkpoint) {
+            // Feed execution metadata to the checkpoint manager (if it supports
+            // it) so commit messages can include per-prompt stats. Best-effort
+            // — failures here must not block commit.
+            if (typeof this.checkpoint.setExecutionMeta === "function") {
+              try {
+                const usage = mapTokenUsage(result.usage);
+                this.checkpoint.setExecutionMeta(prompt.id, {
+                  tokensIn: usage.input,
+                  tokensOut: usage.output,
+                  tokensCache: usage.cacheRead + usage.cacheCreation,
+                  costUsd: result.costUsd,
+                  durationMs: result.durationMs,
+                  toolsUsed: Array.from(toolsUsedThisPrompt),
+                  guardianDecisions: guardianInterventionCount,
+                });
+              } catch (metaErr) {
+                console.error(
+                  `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${prompt.id}:`,
+                  metaErr,
+                );
+              }
+            }
             try {
               sha = await this.checkpoint.commit(prompt.id, executionId);
               lastGoodSha = sha;

@@ -4,6 +4,7 @@ export * from "./logger.js";
 export * from "./auth/index.js";
 export * from "./orchestrator/index.js";
 export * from "./guardian/index.js";
+export * from "./checkpoint/index.js";
 export {
   ClaudeProcess,
   StreamParser,

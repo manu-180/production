@@ -13,10 +13,14 @@
  */
 
 import {
+  ConcreteCheckpointManager,
   type DbClient,
+  GitManager,
   Orchestrator,
   PauseController,
   type Plan,
+  type RepoInitResult,
+  RepoInitializer,
   type RunEvent,
   type RunResult,
   loadPlanFromDb,
@@ -107,6 +111,81 @@ export class RunHandler {
         return;
       }
 
+      // ── Git checkpoint setup ─────────────────────────────────────────
+      // Initialize the working dir as a git repo (or use the existing one),
+      // stash any dirty state, and create a run-scoped branch. If any of
+      // this fails we cannot safely run — mark the run failed and bail.
+      const gitManager = new GitManager(runRow.working_dir, runRow.working_dir);
+      const repoInitializer = new RepoInitializer(gitManager);
+
+      let repoInitResult: RepoInitResult;
+      try {
+        repoInitResult = await repoInitializer.initForRun(runRow.working_dir, this._runId, {
+          autoInitGit: true,
+          autoStash: true,
+        });
+      } catch (err) {
+        this.logger.error({ runId: this._runId, err }, "failed to initialize git repo for run");
+        await this.markRunFailed(
+          supabase,
+          this._runId,
+          `git init failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
+
+      const checkpointManager = new ConcreteCheckpointManager(
+        gitManager,
+        this._runId,
+        runRow.working_dir,
+      );
+
+      let runInitDone = false;
+      try {
+        const runInit = await checkpointManager.initRun(repoInitResult.originalBranch);
+        runInitDone = true;
+
+        // Pre-populate prompt metadata for richer commit messages.
+        for (const prompt of plan.prompts) {
+          checkpointManager.setPromptMeta(prompt.id, {
+            title: prompt.frontmatter.title ?? prompt.id,
+            filename: prompt.filename,
+            order: prompt.order,
+            total: plan.prompts.length,
+          });
+        }
+
+        // Persist checkpoint_branch on the run row so the UI can reference it.
+        try {
+          await supabase
+            .from("runs")
+            .update({ checkpoint_branch: runInit.runBranch })
+            .eq("id", this._runId);
+        } catch (e) {
+          this.logger.warn(
+            { runId: this._runId, err: e },
+            "failed to persist checkpoint_branch on run row",
+          );
+        }
+      } catch (err) {
+        this.logger.error({ runId: this._runId, err }, "failed to initialize checkpoint run");
+        // Try to undo the stash/branch state we may have created.
+        try {
+          await repoInitializer.restoreAfterRun(repoInitResult);
+        } catch (restoreErr) {
+          this.logger.error(
+            { runId: this._runId, err: restoreErr },
+            "failed to restore repo after init failure",
+          );
+        }
+        await this.markRunFailed(
+          supabase,
+          this._runId,
+          `checkpoint initRun failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
+
       const pauseController = new PauseController();
       const logger = this.logger;
       this.orchestrator = new Orchestrator({
@@ -118,6 +197,7 @@ export class RunHandler {
         onEvent: (event: RunEvent): void => {
           logger.debug({ runId: this._runId, event }, "run event");
         },
+        checkpoint: checkpointManager,
       });
 
       this.logger.info(
@@ -125,7 +205,29 @@ export class RunHandler {
         "starting orchestrator",
       );
 
-      const result: RunResult = await this.orchestrator.run();
+      let result: RunResult | null = null;
+      try {
+        result = await this.orchestrator.run();
+      } finally {
+        // Always finalize the checkpoint and restore the repo, even on errors.
+        // Failures here are logged but do not change the run outcome.
+        if (runInitDone) {
+          try {
+            await checkpointManager.finishRun(
+              result?.status === "completed",
+              repoInitResult.originalBranch,
+              { mergeToOriginal: true, deleteRunBranch: true },
+            );
+          } catch (err) {
+            this.logger.error({ runId: this._runId, err }, "failed to finalize checkpoint");
+          }
+          try {
+            await repoInitializer.restoreAfterRun(repoInitResult);
+          } catch (err) {
+            this.logger.error({ runId: this._runId, err }, "failed to restore repo after run");
+          }
+        }
+      }
 
       this.logger.info(
         {
