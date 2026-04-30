@@ -8,6 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
+    // API route tests + anything under app/api/** need Node primitives
+    // (AbortSignal, Buffer) that jsdom shadows incorrectly.
+    environmentMatchGlobs: [["app/api/**", "node"]],
     include: [
       "lib/**/*.test.ts",
       "lib/**/*.test.tsx",
