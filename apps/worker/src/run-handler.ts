@@ -27,6 +27,8 @@ import {
 } from "@conductor/core";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import type { Logger } from "pino";
+import { createHeartbeat } from "./heartbeat.js";
+import type { HealthMonitor } from "@conductor/core";
 
 export interface RunHandlerOptions {
   runId: string;
@@ -51,6 +53,7 @@ export class RunHandler {
   private readonly logger: Logger;
   private orchestrator: Orchestrator | null = null;
   private running = false;
+  private heartbeat: HealthMonitor | null = null;
 
   constructor(opts: RunHandlerOptions) {
     this._runId = opts.runId;
@@ -83,6 +86,12 @@ export class RunHandler {
       // surface, with `{ data, error }` results. Cast through `unknown` to
       // satisfy the structural-but-not-identical typing.
       const db = supabase as unknown as DbClient;
+
+      // Heartbeat: tells the orphan-recovery sweeper this worker still owns
+      // the run. Started here (right after we have a db client) so even an
+      // early load-time failure is covered by an `await stop()` in finally.
+      this.heartbeat = createHeartbeat(db, { intervalMs: 10_000, logger: this.logger });
+      this.heartbeat.start(this._runId);
 
       const runRow = await this.loadRunRow(supabase);
       if (runRow === null) {
@@ -260,6 +269,14 @@ export class RunHandler {
         );
       }
     } finally {
+      if (this.heartbeat !== null) {
+        try {
+          await this.heartbeat.stop();
+        } catch (err) {
+          this.logger.warn({ runId: this._runId, err }, "failed to stop heartbeat");
+        }
+        this.heartbeat = null;
+      }
       this.running = false;
       this.orchestrator = null;
     }

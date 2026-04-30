@@ -18,8 +18,15 @@ const claudeProcessMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../executor/index.js", async () => {
+vi.mock("../../executor/index.js", async (importOriginal) => {
+  // Keep the real exports (ExecutorError, helpers, etc.) so the orchestrator's
+  // recovery-aware retry logic that does `err instanceof ExecutorError`
+  // continues to work. Only ClaudeProcess is replaced with a mock so we don't
+  // spawn the real Claude CLI in unit tests.
+  const actual =
+    (await importOriginal()) as Record<string, unknown>;
   return {
+    ...actual,
     ClaudeProcess: vi.fn().mockImplementation(() => {
       const idx = claudeProcessMock.callIndex++;
       const instance = {

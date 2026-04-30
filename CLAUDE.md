@@ -63,5 +63,9 @@ conductor/
 - [x] 04 — Executor (claude-cli wrapper)
 - [x] 05 — Plan loader
 - [x] 06 — Orchestrator
-- [ ] 07 — Guardian (auto-decisión inteligente) ← ACTUAL
-- [ ] 08+ — Dashboard UI, métricas, etc.
+- [x] 07 — Guardian (auto-decisión inteligente)
+- [x] 08 — Checkpoint
+- [x] 09 — Recovery (retry, resume, rate limits, heartbeat, crash recovery)
+- [x] 10 — API
+- [x] 11 — UI Dashboard (live runs, KPIs, settings)
+- [ ] 12 — UI Editor (plan/prompt editor) ← NEXT

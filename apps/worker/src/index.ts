@@ -20,6 +20,7 @@ import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { PgListener } from "./lib/pg-listen.js";
 import { RunHandler } from "./run-handler.js";
+import { runStartupRecovery } from "./startup-recovery.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Logger
@@ -192,5 +193,13 @@ logger.info(
   { concurrency: WORKER_CONCURRENCY, pollIntervalMs: 3_000 },
   "conductor worker starting",
 );
+
+// Sweep orphaned runs from prior worker crashes BEFORE we start listening.
+// Failures here are logged and do not block startup.
+{
+  const recoveryClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  await runStartupRecovery(recoveryClient, logger);
+}
+
 await listener.start();
 logger.info("conductor worker ready");

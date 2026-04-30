@@ -149,6 +149,12 @@ export type RunEvent =
       error: string;
       willRetry: boolean;
     }
+  | {
+      type: "prompt.rate_limited";
+      promptId: string;
+      waitMs: number;
+      attempt: number;
+    }
   | { type: "run.paused"; reason: string }
   | { type: "run.completed"; totalCostUsd: number; durationMs: number }
   | { type: "run.failed"; failedAtPromptId: string; error: string };

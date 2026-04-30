@@ -15,11 +15,18 @@
 import {
   ClaudeProcess,
   type ClaudeProcessOptions,
+  ExecutorError,
   type ExecutionResult,
   isAssistantEvent,
 } from "../executor/index.js";
 import type { ClaudeStreamEvent, TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
 import type { GuardianRunner } from "../guardian/guardian-runner.js";
+import {
+  type ClassifiedError,
+  DEFAULT_RETRY_POLICY,
+  classifyError,
+  nextDelay,
+} from "../recovery/index.js";
 import type { GuardianDecision, Plan, PromptDefinition, RunEvent, TokenUsage } from "../types.js";
 import { type ExecutionContext, addUsage, createExecutionContext } from "./execution-context.js";
 import { CancelledError, type PauseController } from "./pause-controller.js";
@@ -222,6 +229,44 @@ function errorMessage(err: unknown): string {
 async function backoff(attempt: number): Promise<void> {
   const delay = Math.min(2 ** attempt * 1000 + Math.random() * 1000, MAX_BACKOFF_MS);
   await new Promise<void>((resolve) => setTimeout(resolve, delay));
+}
+
+/**
+ * Recovery-aware retry decision. Classifies the error using the recovery
+ * primitives, returning whether to retry plus the wait duration to apply.
+ *
+ * - {@link GuardianLoopError}: terminal — `{ retry: false, classified: null }`.
+ * - {@link ExecutorError}: classified — honors `retryable` and `waitMs`
+ *   (rate-limit hint or transient default).
+ * - Anything else: treated as transient unknown — retryable with default
+ *   exponential backoff. Same generosity the legacy `backoff()` had.
+ */
+function classifyRetry(
+  err: unknown,
+  attempt: number,
+): { retry: boolean; waitMs: number; classified: ClassifiedError | null } {
+  if (err instanceof GuardianLoopError) {
+    return { retry: false, waitMs: 0, classified: null };
+  }
+  if (err instanceof ExecutorError) {
+    const classified = classifyError(err);
+    if (!classified.retryable) {
+      return { retry: false, waitMs: 0, classified };
+    }
+    const waitMs = classified.waitMs ?? nextDelay(DEFAULT_RETRY_POLICY, attempt);
+    return { retry: true, waitMs, classified };
+  }
+  // Unknown error shape — keep retrying with default exponential-jitter backoff.
+  return {
+    retry: true,
+    waitMs: nextDelay(DEFAULT_RETRY_POLICY, attempt),
+    classified: null,
+  };
+}
+
+async function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -574,15 +619,18 @@ export class Orchestrator {
         try {
           executionId = await createPromptExecution(prompt, attempt, this.runId, this.db);
         } catch (err) {
+          // DB insert failures are infra-level, not Claude-level. Always treat
+          // as transient and use the default backoff policy.
           lastError = errorMessage(err);
+          const willRetry = attempt < maxAttempts;
           await this.emit({
             type: "prompt.failed",
             promptId: prompt.id,
             error: lastError,
-            willRetry: attempt < maxAttempts,
+            willRetry,
           });
-          if (attempt < maxAttempts) {
-            await backoff(attempt);
+          if (willRetry) {
+            await sleep(nextDelay(DEFAULT_RETRY_POLICY, attempt));
             attempt++;
             continue;
           }
@@ -811,24 +859,43 @@ export class Orchestrator {
           break;
         } catch (err) {
           lastError = errorMessage(err);
-          // Guardian-loop failures are terminal — they signal a configuration
-          // or detection problem that more retries can't fix. Skip retry/
-          // backoff and break straight to the prompt-level failure path.
+          // Recovery-aware classification: GuardianLoopError + non-retryable
+          // ExecutorError categories (auth/config/system) break out
+          // immediately. Rate-limited errors carry a `Retry-After`-derived
+          // wait. Anything else uses the default exponential-jitter backoff.
+          const decision = classifyRetry(err, attempt);
           const isGuardianLoop = err instanceof GuardianLoopError;
-          const errCode = isGuardianLoop ? "GUARDIAN_LOOP" : "UNKNOWN";
+          const errCode = isGuardianLoop
+            ? "GUARDIAN_LOOP"
+            : decision.classified !== null
+              ? decision.classified.category.toUpperCase()
+              : "UNKNOWN";
+
           await updatePromptExecution(executionId, "failed", null, "", this.db, {
             code: errCode,
             message: lastError,
           });
+
+          const willRetry = decision.retry && attempt < maxAttempts;
+
+          if (decision.classified?.category === "rate_limit") {
+            await this.emit({
+              type: "prompt.rate_limited",
+              promptId: prompt.id,
+              waitMs: decision.waitMs,
+              attempt,
+            });
+          }
+
           await this.emit({
             type: "prompt.failed",
             promptId: prompt.id,
             error: lastError,
-            willRetry: !isGuardianLoop && attempt < maxAttempts,
+            willRetry,
           });
 
-          if (!isGuardianLoop && attempt < maxAttempts) {
-            await backoff(attempt);
+          if (willRetry) {
+            await sleep(decision.waitMs);
             attempt++;
             continue;
           }
