@@ -11,7 +11,7 @@ const log = createLogger("api");
 export interface RouteContext<
   TBody = undefined,
   TQuery = undefined,
-  TParams extends Record<string, string> = Record<string, never>,
+  TParams = Record<string, never>,
 > {
   req: NextRequest;
   user: AuthedUser;
@@ -32,11 +32,11 @@ interface DefineRouteOptions<TBody, TQuery> {
   querySchema?: ZodType<TQuery>;
 }
 
-type Handler<TBody, TQuery, TParams extends Record<string, string>> = (
+type Handler<TBody, TQuery, TParams> = (
   ctx: RouteContext<TBody, TQuery, TParams>,
 ) => Promise<NextResponse>;
 
-type NextRouteContext<TParams extends Record<string, string>> = {
+type NextRouteContext<TParams> = {
   params: Promise<TParams>;
 };
 
@@ -51,11 +51,7 @@ type NextRouteContext<TParams extends Record<string, string>> = {
  * - On rate limit, returns 429 with `Retry-After` header.
  * - Always sets `x-trace-id` on the response.
  */
-export function defineRoute<
-  TBody = undefined,
-  TQuery = undefined,
-  TParams extends Record<string, string> = Record<string, never>,
->(
+export function defineRoute<TBody = undefined, TQuery = undefined, TParams = Record<string, never>>(
   options: DefineRouteOptions<TBody, TQuery>,
   handler: Handler<TBody, TQuery, TParams>,
 ): (req: NextRequest, ctx?: NextRouteContext<TParams>) => Promise<NextResponse> {

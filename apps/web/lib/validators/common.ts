@@ -18,17 +18,32 @@ export const paginationQuerySchema = z.object({
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
-/** Encode a row id into an opaque cursor. */
-export function encodeCursor(id: string): string {
-  return Buffer.from(id, "utf8").toString("base64url");
+/**
+ * Cursor encoding for keyset pagination.
+ *
+ * Cursors are opaque to clients. We encode the last row's `(created_at, id)`
+ * tuple base64url'd. Pagination queries use `created_at` as the primary key
+ * with `id` as tiebreaker, matching ORDER BY (created_at DESC, id DESC).
+ */
+export interface PageCursor {
+  createdAt: string; // ISO timestamp
+  id: string; // UUID
 }
 
-/** Decode a cursor back to a row id. Returns null on malformed input. */
-export function decodeCursor(cursor: string | undefined): string | null {
+export function encodeCursor(c: PageCursor): string {
+  return Buffer.from(`${c.createdAt}|${c.id}`, "utf8").toString("base64url");
+}
+
+export function decodeCursor(cursor: string | undefined): PageCursor | null {
   if (cursor === undefined) return null;
   try {
     const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    return decoded.length > 0 ? decoded : null;
+    const idx = decoded.lastIndexOf("|");
+    if (idx <= 0 || idx === decoded.length - 1) return null;
+    const createdAt = decoded.slice(0, idx);
+    const id = decoded.slice(idx + 1);
+    if (createdAt.length === 0 || id.length === 0) return null;
+    return { createdAt, id };
   } catch {
     return null;
   }
