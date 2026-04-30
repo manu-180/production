@@ -78,11 +78,13 @@ export class CheckpointManager {
   /** Stores execution metadata at commit time (for commit messages) */
   private readonly executionMetaMap = new Map<string, ExecutionMeta>();
   /** Ordered list of checkpoints made during this run */
-  private readonly checkpoints: CheckpointEntry[] = [];
+  private checkpoints: CheckpointEntry[] = [];
   /** SHA before any run changes (for rollback baseline) */
   private baseSha: string | null = null;
   /** Branch created for this run */
   private runBranch: string | null = null;
+  /** Set to true after finishRun succeeds — blocks further git operations */
+  private finished = false;
 
   constructor(
     private readonly gitManager: GitManager,
@@ -101,6 +103,13 @@ export class CheckpointManager {
    * Returns the branch name and base SHA so callers can reference them.
    */
   async initRun(_originalBranch: string): Promise<RunInitResult> {
+    if (this.runBranch !== null) {
+      throw new CheckpointManagerError(
+        "ALREADY_INITIALIZED",
+        `Run already initialized on branch ${this.runBranch}`,
+      );
+    }
+
     const branchName = `conductor/run-${this.runId.slice(0, 8)}`;
 
     // createBranch internally calls checkoutLocalBranch, so HEAD moves to the new branch.
@@ -140,6 +149,12 @@ export class CheckpointManager {
    * Returns the new HEAD SHA.
    */
   async commit(promptId: string, executionId: string): Promise<string> {
+    if (this.finished) {
+      throw new CheckpointManagerError(
+        "RUN_FINISHED",
+        "Cannot perform git operations after run has finished.",
+      );
+    }
     if (this.runBranch === null) {
       throw new CheckpointManagerError(
         "RUN_NOT_INITIALIZED",
@@ -153,7 +168,17 @@ export class CheckpointManager {
 
     await this.gitManager.commit(message, { allowEmpty: true });
 
-    const sha = await this.gitManager.getHeadSha();
+    // Always get the SHA — if this throws, we have an orphaned commit but
+    // cannot undo it. Surface a distinct error code so callers can diagnose.
+    let sha: string;
+    try {
+      sha = await this.gitManager.getHeadSha();
+    } catch (err) {
+      throw new CheckpointManagerError(
+        "SHA_FETCH_FAILED",
+        `Commit succeeded but getHeadSha failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     const entry: CheckpointEntry = {
       promptId,
@@ -174,6 +199,12 @@ export class CheckpointManager {
    * come after the target SHA.
    */
   async rollback(sha: string): Promise<void> {
+    if (this.finished) {
+      throw new CheckpointManagerError(
+        "RUN_FINISHED",
+        "Cannot perform git operations after run has finished.",
+      );
+    }
     if (this.runBranch === null) {
       throw new CheckpointManagerError(
         "RUN_NOT_INITIALIZED",
@@ -193,18 +224,26 @@ export class CheckpointManager {
       );
     }
 
-    // gitManager.resetHard internally validates that sha is reachable from the
-    // current branch via SafetyGuards.validateResetTarget — double safety.
-    await this.gitManager.resetHard(sha);
+    // Compute which entries survive the rollback — purely in-memory, no git yet.
+    const rollbackIdx = this.checkpoints.findIndex((e) => e.sha === sha);
+    // If sha is baseSha, rollbackIdx === -1 → keep nothing; otherwise keep up to and including target.
+    const entriesToKeep = rollbackIdx === -1 ? [] : this.checkpoints.slice(0, rollbackIdx + 1);
+    const removed = this.checkpoints.slice(entriesToKeep.length);
 
-    // Remove checkpoints that are no longer reachable after the reset.
-    const targetIdx = this.checkpoints.findIndex((e) => e.sha === sha);
-    if (targetIdx !== -1) {
-      // Keep entries up to and including the target.
-      this.checkpoints.splice(targetIdx + 1);
-    } else {
-      // We rolled back to baseSha (before any checkpoint). Clear everything.
-      this.checkpoints.splice(0);
+    // Prune in memory BEFORE the destructive git operation.
+    this.checkpoints = entriesToKeep;
+
+    try {
+      // gitManager.resetHard internally validates that sha is reachable from the
+      // current branch via SafetyGuards.validateResetTarget — double safety.
+      await this.gitManager.resetHard(sha);
+    } catch (err) {
+      // Restore state so in-memory and git remain consistent.
+      this.checkpoints = [...entriesToKeep, ...removed];
+      throw new CheckpointManagerError(
+        "ROLLBACK_FAILED",
+        `git reset --hard failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -232,8 +271,18 @@ export class CheckpointManager {
       const postMergeHeadSha = await this.gitManager.getHeadSha();
       SafetyGuards.validateMergeComplete(runTipSha, postMergeHeadSha);
 
+      // Mark run as finished before branch cleanup so subsequent calls are
+      // blocked even if deleteBranch throws.
+      this.finished = true;
+      this.runBranch = null;
+
       if (deleteRunBranch) {
-        await this.gitManager.deleteBranch(runBranch);
+        try {
+          await this.gitManager.deleteBranch(runBranch);
+        } catch {
+          // Best-effort cleanup — the merge succeeded, so the run is complete.
+          // A stale branch is a minor annoyance, not a correctness issue.
+        }
       }
     } else if (!success) {
       // On failure: return to the original branch and leave the run branch
@@ -257,6 +306,19 @@ export class CheckpointManager {
    * the previous checkpoint's SHA.
    */
   async getDiffForPrompt(promptId: string): Promise<string> {
+    if (this.finished) {
+      throw new CheckpointManagerError(
+        "RUN_FINISHED",
+        "Cannot perform git operations after run has finished.",
+      );
+    }
+    if (this.runBranch === null) {
+      throw new CheckpointManagerError(
+        "RUN_NOT_INITIALIZED",
+        "initRun() must be called before getDiffForPrompt().",
+      );
+    }
+
     const idx = this.checkpoints.findIndex((e) => e.promptId === promptId);
     if (idx === -1)
       throw new CheckpointManagerError(
