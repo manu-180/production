@@ -171,7 +171,7 @@ async function DecisionsContent({ runId }: { runId: string }) {
                       )}
                     </TableCell>
                     <TableCell>
-                      <DecisionDetailDialog decision={d} />
+                      <DecisionDetailDialog decision={d} runId={runId} />
                     </TableCell>
                   </TableRow>
                 ))}
