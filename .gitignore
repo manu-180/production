@@ -17,7 +17,10 @@ build/
 
 # Logs
 *.log
-logs/
+# Match a top-level/runtime `logs/` only — the API route dir
+# `apps/web/app/api/runs/[id]/logs/` is source code, not a log sink.
+/logs/
+**/.next/logs/
 npm-debug.log*
 pnpm-debug.log*
 
