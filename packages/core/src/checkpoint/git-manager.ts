@@ -133,32 +133,72 @@ export class GitManager {
   }
 
   /**
-   * Returns numstat output: array of { added, removed, path } per changed file.
-   * Renames have format "old => new" in path. Binary files have "-" in added/removed.
+   * Returns numstat output: array of { added, removed, path, oldPath? } per
+   * changed file. Uses `-z` (NUL-separated) so paths containing tabs, spaces,
+   * or unicode are handled losslessly and renames are emitted as
+   * `ADDED\tREMOVED\t\0oldPath\0newPath\0` instead of the human-readable
+   * "old => new" form.
+   * Binary files have "-" in added/removed which we normalize to 0.
    */
   async getNumstat(
     fromSha: string,
     toSha: string,
-  ): Promise<Array<{ added: number; removed: number; path: string }>> {
+  ): Promise<Array<{ added: number; removed: number; path: string; oldPath?: string }>> {
     this.guard();
     try {
-      const raw = await this.git.raw(["diff", "--numstat", fromSha, toSha]);
-      return raw
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          const parts = line.split("\t");
-          const addedStr = parts[0];
-          const removedStr = parts[1];
-          const pathParts = parts.slice(2);
-          const added = addedStr === "-" ? 0 : Number.parseInt(addedStr ?? "0", 10);
-          const removed = removedStr === "-" ? 0 : Number.parseInt(removedStr ?? "0", 10);
-          return {
-            added: Number.isNaN(added) ? 0 : added,
-            removed: Number.isNaN(removed) ? 0 : removed,
-            path: pathParts.join("\t"),
-          };
-        });
+      const raw = await this.git.raw(["diff", "--numstat", "-z", fromSha, toSha]);
+      const result: Array<{ added: number; removed: number; path: string; oldPath?: string }> = [];
+
+      // With -z, records are separated by \0:
+      //   non-rename: "ADDED\tREMOVED\tpath\0"
+      //   rename:     "ADDED\tREMOVED\t\0oldPath\0newPath\0"
+      // Split by \0, then walk tokens. A token whose remainder after the two
+      // tab-separated count fields is empty signals that the next two tokens
+      // are the rename's oldPath and newPath.
+      const tokens = raw.split("\0").filter((t) => t !== "");
+      let i = 0;
+      while (i < tokens.length) {
+        const tok = tokens[i];
+        if (tok === undefined) {
+          i++;
+          continue;
+        }
+
+        const tabIdx1 = tok.indexOf("\t");
+        const tabIdx2 = tok.indexOf("\t", tabIdx1 + 1);
+        if (tabIdx1 < 0 || tabIdx2 < 0) {
+          i++;
+          continue;
+        }
+
+        const addedStr = tok.slice(0, tabIdx1);
+        const removedStr = tok.slice(tabIdx1 + 1, tabIdx2);
+        const remainder = tok.slice(tabIdx2 + 1);
+
+        const added = addedStr === "-" ? 0 : Number.parseInt(addedStr, 10);
+        const removed = removedStr === "-" ? 0 : Number.parseInt(removedStr, 10);
+        const safeAdded = Number.isNaN(added) ? 0 : added;
+        const safeRemoved = Number.isNaN(removed) ? 0 : removed;
+
+        if (remainder === "") {
+          // Rename row: next two tokens are oldPath and newPath.
+          const oldPath = tokens[i + 1];
+          const newPath = tokens[i + 2];
+          if (oldPath !== undefined && newPath !== undefined) {
+            result.push({
+              added: safeAdded,
+              removed: safeRemoved,
+              path: newPath,
+              oldPath,
+            });
+          }
+          i += 3;
+        } else {
+          result.push({ added: safeAdded, removed: safeRemoved, path: remainder });
+          i += 1;
+        }
+      }
+      return result;
     } catch (err) {
       throw wrap("getNumstat", err);
     }
@@ -167,6 +207,8 @@ export class GitManager {
   /**
    * Returns name-status output: array of { status, path, oldPath? }.
    * Status codes: A (added), M (modified), D (deleted), R (renamed), C (copied), T (type changed).
+   * Uses `-z` so paths with special characters are handled losslessly and
+   * renames/copies appear as 3 NUL-separated tokens: `R100\0old\0new`.
    */
   async getNameStatus(
     fromSha: string,
@@ -174,24 +216,36 @@ export class GitManager {
   ): Promise<Array<{ status: string; path: string; oldPath?: string }>> {
     this.guard();
     try {
-      const raw = await this.git.raw(["diff", "--name-status", fromSha, toSha]);
-      return raw
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => {
-          const parts = line.split("\t");
-          const code = parts[0] ?? "";
-          // Renames/copies look like "R100\told\tnew" — code starts with R or C.
-          if (code.startsWith("R") || code.startsWith("C")) {
-            const letter = code[0] ?? "";
-            return {
-              status: letter,
-              oldPath: parts[1] ?? "",
-              path: parts[2] ?? "",
-            };
+      const raw = await this.git.raw(["diff", "--name-status", "-z", fromSha, toSha]);
+      const result: Array<{ status: string; path: string; oldPath?: string }> = [];
+      const tokens = raw.split("\0").filter((t) => t !== "");
+      let i = 0;
+      while (i < tokens.length) {
+        const code = tokens[i];
+        if (code === undefined) {
+          i++;
+          continue;
+        }
+
+        const firstChar = code[0] ?? "";
+        if (firstChar === "R" || firstChar === "C") {
+          // Rename/copy: code is e.g. "R100", followed by oldPath then newPath.
+          const oldPath = tokens[i + 1];
+          const newPath = tokens[i + 2];
+          if (oldPath !== undefined && newPath !== undefined) {
+            result.push({ status: firstChar, oldPath, path: newPath });
           }
-          return { status: code, path: parts.slice(1).join("\t") };
-        });
+          i += 3;
+        } else {
+          // Single file: code is "A", "M", "D", or "T", followed by the path.
+          const path = tokens[i + 1];
+          if (path !== undefined) {
+            result.push({ status: firstChar, path });
+          }
+          i += 2;
+        }
+      }
+      return result;
     } catch (err) {
       throw wrap("getNameStatus", err);
     }

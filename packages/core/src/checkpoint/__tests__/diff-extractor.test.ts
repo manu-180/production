@@ -102,6 +102,33 @@ describe("DiffExtractor.getSummary", () => {
     });
   });
 
+  it("classifies a rename when numstat carries oldPath (real -z output shape)", async () => {
+    // With `-z`, getNumstat surfaces { path: 'new.ts', oldPath: 'old.ts' }.
+    // getNameStatus returns the post-rename path. Both must reconcile so the
+    // summary has status === 'renamed' with the correct oldPath threaded
+    // through.
+    const git = makeMockGitManager({
+      getNumstat: vi
+        .fn()
+        .mockResolvedValue([{ added: 5, removed: 2, path: "new.ts", oldPath: "old.ts" }]),
+      getNameStatus: vi
+        .fn()
+        .mockResolvedValue([{ status: "R", path: "new.ts", oldPath: "old.ts" }]),
+    });
+    const extractor = new DiffExtractor(git);
+
+    const summary = await extractor.getSummary("from", "to");
+
+    expect(summary.files).toHaveLength(1);
+    expect(summary.files[0]).toEqual({
+      path: "new.ts",
+      status: "renamed",
+      linesAdded: 5,
+      linesRemoved: 2,
+      oldPath: "old.ts",
+    });
+  });
+
   it("aggregates totals across mixed statuses", async () => {
     const git = makeMockGitManager({
       getNumstat: vi.fn().mockResolvedValue([
@@ -373,6 +400,77 @@ describe("DiffExtractor.parseUnifiedDiff", () => {
     expect(lastHunk.lines).toEqual([
       { type: "context", content: "context-C" },
       { type: "add", content: "added-C" },
+    ]);
+  });
+
+  it("parses a path containing spaces (ambiguous diff --git header)", () => {
+    // The `diff --git a/X b/Y` line is ambiguous when paths contain spaces
+    // because the literal " b/" can appear inside the path itself. We resolve
+    // it by finding the split point where the left and right halves match.
+    const diff = [
+      "diff --git a/lib b/foo.ts b/lib b/foo.ts",
+      "index abc..def 100644",
+      "--- a/lib b/foo.ts",
+      "+++ b/lib b/foo.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+
+    const result = extractor.parseUnifiedDiff(diff);
+
+    expect(result).toHaveLength(1);
+    const file = result[0];
+    expect(file).toBeDefined();
+    if (!file) return;
+    expect(file.path).toBe("lib b/foo.ts");
+    expect(file.status).toBe("modified");
+  });
+
+  it("handles a binary file marker with no hunks", () => {
+    const diff = [
+      "diff --git a/foo b/foo",
+      "index abc..def 100644",
+      "Binary files a/foo and b/foo differ",
+    ].join("\n");
+
+    const result = extractor.parseUnifiedDiff(diff);
+
+    expect(result).toHaveLength(1);
+    const file = result[0];
+    expect(file).toBeDefined();
+    if (!file) return;
+    expect(file.path).toBe("foo");
+    expect(file.hunks).toEqual([]);
+  });
+
+  it("gracefully skips the `\\ No newline at end of file` marker", () => {
+    const diff = [
+      "diff --git a/foo.ts b/foo.ts",
+      "index 111..222 100644",
+      "--- a/foo.ts",
+      "+++ b/foo.ts",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "\\ No newline at end of file",
+      "+new",
+      "\\ No newline at end of file",
+    ].join("\n");
+
+    const result = extractor.parseUnifiedDiff(diff);
+
+    expect(result).toHaveLength(1);
+    const file = result[0];
+    expect(file).toBeDefined();
+    if (!file) return;
+    expect(file.path).toBe("foo.ts");
+    expect(file.hunks).toHaveLength(1);
+    const hunk = file.hunks[0];
+    expect(hunk).toBeDefined();
+    if (!hunk) return;
+    expect(hunk.lines).toEqual([
+      { type: "remove", content: "old" },
+      { type: "add", content: "new" },
     ]);
   });
 });

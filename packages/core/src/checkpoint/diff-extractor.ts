@@ -136,7 +136,9 @@ export class DiffExtractor {
 
     for (const entry of numstat) {
       const status = statusByPath.get(entry.path);
-      const code = status?.status ?? "M";
+      // If numstat reports a rename (oldPath present) but name-status didn't
+      // surface one — or vice versa — fall back to whichever source has it.
+      const code = status?.status ?? (entry.oldPath !== undefined ? "R" : "M");
       const mapped = mapStatusCode(code);
 
       const file: DiffSummaryFile = {
@@ -145,8 +147,11 @@ export class DiffExtractor {
         linesAdded: entry.added,
         linesRemoved: entry.removed,
       };
-      if (mapped === "renamed" && status?.oldPath !== undefined) {
-        file.oldPath = status.oldPath;
+      if (mapped === "renamed") {
+        const oldPath = status?.oldPath ?? entry.oldPath;
+        if (oldPath !== undefined) {
+          file.oldPath = oldPath;
+        }
       }
       files.push(file);
 
@@ -232,19 +237,34 @@ export class DiffExtractor {
       // ---------------------------------------------------------------------
       if (line.startsWith("diff --git ")) {
         finalizeFile();
-        // Parse "diff --git a/path b/path" — used as a fallback path source
-        // when neither --- / +++ nor rename headers are present (e.g. pure
-        // mode changes or binary-only diffs).
-        const headerMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-        const fallbackOld = headerMatch?.[1];
-        const fallbackNew = headerMatch?.[2];
+        // The `diff --git a/X b/Y` line is ambiguous when paths contain
+        // spaces (e.g. `diff --git a/lib b/foo.ts b/lib b/foo.ts`). For
+        // non-renames git always emits identical paths on both sides, so we
+        // recover the path by finding the unique split point ` b/` where the
+        // left half equals the right half. For renames the halves differ —
+        // we leave pending paths empty and rely on the subsequent
+        // `--- a/PATH`, `+++ b/PATH`, `rename from`, and `rename to` lines.
+        const rest = line.slice("diff --git a/".length);
+        let matchedPath: string | null = null;
+        for (let i = 0; i < rest.length - 2; i++) {
+          if (rest.slice(i, i + 3) === " b/") {
+            const left = rest.slice(0, i);
+            const right = rest.slice(i + 3);
+            if (left === right) {
+              matchedPath = left;
+              break;
+            }
+          }
+        }
         current = {
-          path: fallbackNew ?? fallbackOld ?? "",
+          path: matchedPath ?? "",
           status: "modified",
           hunks: [],
         };
-        pendingOldPath = fallbackOld;
-        pendingNewPath = fallbackNew;
+        if (matchedPath !== null) {
+          pendingOldPath = matchedPath;
+          pendingNewPath = matchedPath;
+        }
         continue;
       }
 
