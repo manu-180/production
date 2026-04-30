@@ -7,7 +7,7 @@
  */
 
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -38,10 +38,10 @@ export class SafetyGuardError extends Error {
  * original branch.
  */
 export function validateNoBranchTouch(branchName: string): void {
-  if (!branchName.startsWith("conductor/")) {
+  if (!branchName.startsWith("conductor/") || branchName.length <= "conductor/".length) {
     throw new SafetyGuardError(
       "PROTECTED_BRANCH",
-      `Cannot touch branch "${branchName}": only branches starting with "conductor/" are allowed. Conductor must never create, modify, or delete user branches.`,
+      `Cannot modify branch "${branchName}". Only branches starting with "conductor/" (with a non-empty suffix) are allowed.`,
     );
   }
 }
@@ -77,10 +77,12 @@ export function validateResetTarget(targetSha: string, branchHistory: string[]):
  * a nested repository or when the cwd changes during a long run.
  */
 export function validateWorkingDir(workingDir: string, runWorkingDir: string): void {
-  if (workingDir !== runWorkingDir) {
+  const normalizedActual = resolve(workingDir).toLowerCase();
+  const normalizedExpected = resolve(runWorkingDir).toLowerCase();
+  if (normalizedActual !== normalizedExpected) {
     throw new SafetyGuardError(
       "WRONG_WORKING_DIR",
-      `Git command is targeting directory "${workingDir}" but the run was started in "${runWorkingDir}". All git operations must run inside the run's working directory.`,
+      `Git operation attempted in wrong directory.\n  Expected: ${runWorkingDir}\n  Got: ${workingDir}`,
     );
   }
 }
@@ -153,9 +155,9 @@ export async function validateLargeFiles(filePaths: string[], maxSizeMB = 100): 
             sizeMB: (info.size / 1024 / 1024).toFixed(2),
           });
         }
-      } catch {
-        // If the file doesn't exist (deleted, not yet staged) we skip it —
-        // deletions are always safe from a size perspective.
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        // file not found — skip it (deletions are always safe from a size perspective)
       }
     }),
   );

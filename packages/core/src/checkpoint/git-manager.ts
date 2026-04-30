@@ -92,6 +92,9 @@ export class GitManager {
    */
   async getLog(count?: number): Promise<Array<{ hash: string; message: string; date: string }>> {
     this.guard();
+    if (count !== undefined && count < 1) {
+      throw new GitManagerError("getLog", new Error("count must be >= 1"));
+    }
     try {
       const limit = count ?? 20;
       const log = await this.git.log([`-${limit}`]);
@@ -297,6 +300,9 @@ export class GitManager {
    */
   async stash(message: string, includeUntracked = false): Promise<void> {
     this.guard();
+    if (!message.trim()) {
+      throw new GitManagerError("stash", new Error("stash message cannot be empty"));
+    }
     try {
       const args: string[] = ["push", "-m", message];
       if (includeUntracked) args.push("--include-untracked");
