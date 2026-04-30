@@ -141,8 +141,9 @@ export class RunHandler {
       );
 
       let runInitDone = false;
+      let runInit: Awaited<ReturnType<typeof checkpointManager.initRun>> | null = null;
       try {
-        const runInit = await checkpointManager.initRun(repoInitResult.originalBranch);
+        runInit = await checkpointManager.initRun(repoInitResult.originalBranch);
         runInitDone = true;
 
         // Pre-populate prompt metadata for richer commit messages.
@@ -206,8 +207,12 @@ export class RunHandler {
       );
 
       let result: RunResult | null = null;
+      let orchestratorError: unknown = null;
       try {
         result = await this.orchestrator.run();
+      } catch (err) {
+        orchestratorError = err;
+        this.logger.error({ err, runId: this._runId }, "orchestrator threw");
       } finally {
         // Always finalize the checkpoint and restore the repo, even on errors.
         // Failures here are logged but do not change the run outcome.
@@ -219,7 +224,10 @@ export class RunHandler {
               { mergeToOriginal: true, deleteRunBranch: true },
             );
           } catch (err) {
-            this.logger.error({ runId: this._runId, err }, "failed to finalize checkpoint");
+            this.logger.error(
+              { err, runId: this._runId, runBranch: runInit?.runBranch },
+              "failed to finalize checkpoint",
+            );
           }
           try {
             await repoInitializer.restoreAfterRun(repoInitResult);
@@ -227,18 +235,30 @@ export class RunHandler {
             this.logger.error({ runId: this._runId, err }, "failed to restore repo after run");
           }
         }
+
+        // Write terminal status to DB so the run row doesn't get stuck in
+        // `running`. Runs both on success (orchestrator returned a result)
+        // and failure (orchestrator threw).
+        await this.writeTerminalRunStatus(
+          db,
+          result,
+          orchestratorError,
+          runInit?.runBranch ?? null,
+        );
       }
 
-      this.logger.info(
-        {
-          runId: this._runId,
-          status: result.status,
-          completed: result.completedPrompts,
-          totalCostUsd: result.totalCostUsd,
-          durationMs: result.totalDurationMs,
-        },
-        "orchestrator finished",
-      );
+      if (result !== null) {
+        this.logger.info(
+          {
+            runId: this._runId,
+            status: result.status,
+            completed: result.completedPrompts,
+            totalCostUsd: result.totalCostUsd,
+            durationMs: result.totalDurationMs,
+          },
+          "orchestrator finished",
+        );
+      }
     } finally {
       this.running = false;
       this.orchestrator = null;
@@ -258,6 +278,63 @@ export class RunHandler {
   /** Cancel the currently running orchestrator. No-op if none. */
   cancel(reason: string): void {
     this.orchestrator?.cancel(reason);
+  }
+
+  /**
+   * Write the terminal `runs` row status after the orchestrator finishes (or
+   * throws). Runs in the post-orchestrator `finally`, so it must be best
+   * effort: any DB error is logged but never rethrown. On success we also
+   * clear `checkpoint_branch` (the run branch is deleted by `finishRun`),
+   * but on failure we retain it so the user can inspect the branch.
+   */
+  private async writeTerminalRunStatus(
+    db: DbClient,
+    result: RunResult | null,
+    orchestratorError: unknown,
+    runBranch: string | null,
+  ): Promise<void> {
+    let status: "completed" | "failed" | "cancelled" = "failed";
+    let cancellationReason: string | null = null;
+
+    if (result !== null) {
+      // Trust the orchestrator's reported status.
+      if (result.status === "completed") status = "completed";
+      else if (result.status === "cancelled") status = "cancelled";
+      else status = "failed";
+    } else if (orchestratorError !== null) {
+      status = "failed";
+      cancellationReason =
+        orchestratorError instanceof Error
+          ? orchestratorError.message.slice(0, 500)
+          : String(orchestratorError).slice(0, 500);
+    }
+
+    const update: Record<string, unknown> = {
+      status,
+      finished_at: new Date().toISOString(),
+    };
+
+    // On success the run branch was merged + deleted by finishRun, so the
+    // checkpoint_branch reference is dangling — clear it. On failure keep it
+    // so the user can inspect the run branch.
+    if (status === "completed") {
+      update["checkpoint_branch"] = null;
+    }
+
+    if (cancellationReason !== null) {
+      update["cancellation_reason"] = cancellationReason;
+    }
+
+    try {
+      const { error } = await db.from("runs").update(update).eq("id", this._runId);
+      if (error !== null && error !== undefined) {
+        this.logger.error({ error, runId: this._runId }, "failed to write terminal run status");
+      } else {
+        this.logger.info({ runId: this._runId, status, runBranch }, "run finalized");
+      }
+    } catch (err) {
+      this.logger.error({ err, runId: this._runId }, "failed to write terminal run status (threw)");
+    }
   }
 
   /**
