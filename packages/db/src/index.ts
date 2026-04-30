@@ -2,8 +2,12 @@ import type { Database } from "./types.gen";
 
 export { createClient } from "./client";
 export { createServerComponentClient, createServiceClient } from "./server";
+export type { SupabaseClient } from "@supabase/supabase-js";
 export type { Database } from "./types.gen";
 export type { Json } from "./types.gen";
+
+/** Pre-typed service client. Routes that hold a service-role db can use this alias. */
+export type ServiceClient = import("@supabase/supabase-js").SupabaseClient<Database>;
 
 // ─── Table Row aliases ────────────────────────────────────────────────────────
 export type AuthToken = Database["public"]["Tables"]["auth_tokens"]["Row"];
