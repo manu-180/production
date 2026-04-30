@@ -73,6 +73,12 @@ export class QueryStub {
   in(c: string, v: unknown[]) {
     return this.rec("in", c, v);
   }
+  gte(c: string, v: unknown) {
+    return this.rec("gte", c, v);
+  }
+  lt(c: string, v: unknown) {
+    return this.rec("lt", c, v);
+  }
   single() {
     return Promise.resolve(this.next);
   }
@@ -93,6 +99,8 @@ export class QueryStub {
 export class DbStub {
   public stubs: QueryStub[] = [];
   public byTable = new Map<string, QueryStub[]>();
+  public rpcCalls: { fn: string; args: unknown }[] = [];
+  private rpcQueue = new Map<string, StubResult[]>();
 
   enqueue(table: string, result: StubResult): QueryStub {
     const q = new QueryStub(table);
@@ -104,11 +112,26 @@ export class DbStub {
     return q;
   }
 
+  /** Queue the next response for a `db.rpc(fn, args)` call. */
+  enqueueRpc(fn: string, result: StubResult): void {
+    const list = this.rpcQueue.get(fn) ?? [];
+    list.push(result);
+    this.rpcQueue.set(fn, list);
+  }
+
   /** Same `from(...)` shape Supabase exposes; pulls the next stub for the table. */
   from(table: string): QueryStub {
     const list = this.byTable.get(table) ?? [];
     const q = list.shift() ?? new QueryStub(table);
     return q;
+  }
+
+  /** Mirror of supabase.rpc(fnName, args) — returns the next queued result. */
+  rpc(fn: string, args: unknown): Promise<StubResult> {
+    this.rpcCalls.push({ fn, args });
+    const list = this.rpcQueue.get(fn) ?? [];
+    const next = list.shift();
+    return Promise.resolve(next ?? { data: null, error: null });
   }
 
   /** All recorded ops across every consumed stub. Useful for assertions after the route returned. */

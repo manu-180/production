@@ -27,9 +27,15 @@ export const runListQuerySchema = paginationQuerySchema.extend({
 });
 export type RunListQuery = z.infer<typeof runListQuerySchema>;
 
-export const runReasonBodySchema = z.object({
-  reason: reasonSchema.optional(),
-});
+/**
+ * Optional-reason body. Accepts `null`/`undefined`/missing JSON because POST
+ * without a body is idiomatic for control endpoints (`POST /pause` etc.) and
+ * we don't want to force the client to send `{}`.
+ */
+export const runReasonBodySchema = z.preprocess(
+  (v) => (v === null || v === undefined ? {} : v),
+  z.object({ reason: reasonSchema.optional() }),
+);
 export type RunReasonBody = z.infer<typeof runReasonBodySchema>;
 
 export const runCancelSchema = z.object({
