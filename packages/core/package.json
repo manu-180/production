@@ -17,6 +17,7 @@
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "pino": "^9.6.0",
+    "simple-git": "^3.36.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
