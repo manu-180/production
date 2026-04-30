@@ -142,14 +142,44 @@ export class RepoInitializer {
 
   /**
    * Restores the repository to its pre-run state:
+   * - Verifies the expected stash is still at stash@{0} before popping.
    * - Pops the stash if one was created.
    * - Checks out the original branch (in case the run left us on a run branch).
+   *
+   * Throws RepoInitializerError with specific codes on failure so callers can
+   * surface actionable messages to the user.
    */
   async restoreAfterRun(result: RepoInitResult): Promise<void> {
     if (result.wasStashed && result.stashRef !== null) {
-      await this.gitManager.stashPop(result.stashRef);
+      // Guard against the stash@{0} race condition: verify that the stash
+      // entry at stashRef still carries a Conductor label before popping it.
+      // This catches the case where a user or external process pushed a new
+      // stash between our `stash` and this `restoreAfterRun` call.
+      const msg = await this.gitManager.getStashMessage(result.stashRef);
+      if (!msg?.includes("conductor-pre-run-")) {
+        throw new RepoInitializerError(
+          "STASH_MISMATCH",
+          `Stash at ${result.stashRef} doesn't match the expected Conductor stash. Manual intervention required. Expected a message containing "conductor-pre-run-", but found: ${msg ?? "(no stash at this ref)"}`,
+        );
+      }
+
+      try {
+        await this.gitManager.stashPop(result.stashRef);
+      } catch (err) {
+        throw new RepoInitializerError(
+          "STASH_POP_FAILED",
+          `Failed to restore stashed changes. Manual 'git stash pop' may be needed.\n${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
-    await this.gitManager.checkout(result.originalBranch);
+    try {
+      await this.gitManager.checkout(result.originalBranch);
+    } catch (err) {
+      throw new RepoInitializerError(
+        "CHECKOUT_FAILED",
+        `Failed to return to original branch '${result.originalBranch}'.\n${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

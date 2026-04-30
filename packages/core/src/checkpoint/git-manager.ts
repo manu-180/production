@@ -327,6 +327,28 @@ export class GitManager {
   }
 
   /**
+   * Returns the stash message for a given stash ref (e.g. "stash@{0}"), or
+   * null if no entry exists at that ref.
+   *
+   * Internally runs `git stash list --format=%gd: %s` and searches for a
+   * line that starts with `<ref>:`. This is used by RepoInitializer to
+   * verify the correct stash is at stash@{0} before popping it, guarding
+   * against the race condition where another process pushes a stash between
+   * Conductor's stash and restore.
+   */
+  async getStashMessage(ref = "stash@{0}"): Promise<string | null> {
+    this.guard();
+    try {
+      const output = await this.git.raw(["stash", "list", "--format=%gd: %s"]);
+      const lines = output.split("\n").filter(Boolean);
+      const entry = lines.find((l) => l.startsWith(`${ref}:`));
+      return entry ? entry.slice(ref.length + 2).trim() : null;
+    } catch (err) {
+      throw wrap("getStashMessage", err);
+    }
+  }
+
+  /**
    * Deletes a branch. The branch name MUST start with `conductor/`.
    * Pass `force: true` to use `-D` instead of `-d`.
    */
