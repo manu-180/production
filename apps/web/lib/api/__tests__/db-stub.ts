@@ -40,6 +40,9 @@ export class QueryStub {
   insert(payload: unknown) {
     return this.rec("insert", payload);
   }
+  upsert(payload: unknown, opts?: unknown) {
+    return this.rec("upsert", payload, opts);
+  }
   update(payload: unknown) {
     return this.rec("update", payload);
   }
