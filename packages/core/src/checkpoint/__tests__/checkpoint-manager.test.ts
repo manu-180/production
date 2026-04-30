@@ -113,7 +113,7 @@ describe("CheckpointManager.initRun", () => {
 describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
   it("calls add('.') before commit", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValue("sha-after-commit-1"),
+      commit: vi.fn().mockResolvedValue("sha-after-commit-1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -128,7 +128,7 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
 
   it("calls gitManager.commit with a formatted message including runId prefix", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValue("sha-after-commit-1"),
+      commit: vi.fn().mockResolvedValue("sha-after-commit-1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -148,7 +148,7 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
 
   it("always passes { allowEmpty: true } to gitManager.commit", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValue("sha-001"),
+      commit: vi.fn().mockResolvedValue("sha-001"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -164,12 +164,9 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
     expect(opts).toEqual({ allowEmpty: true });
   });
 
-  it("returns the SHA from getHeadSha()", async () => {
+  it("returns the SHA from gitManager.commit()", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi
-        .fn()
-        .mockResolvedValueOnce("sha-base") // called in initRun
-        .mockResolvedValueOnce("sha-prompt-1"), // called in commit
+      commit: vi.fn().mockResolvedValue("sha-prompt-1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -184,7 +181,7 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
 
   it("records the checkpoint entry in getCheckpoints()", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-prompt-1"),
+      commit: vi.fn().mockResolvedValue("sha-prompt-1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -200,6 +197,30 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
     expect(checkpoints[0]?.executionId).toBe("exec-001");
     expect(checkpoints[0]?.sha).toBe("sha-prompt-1");
   });
+
+  it("uses the SHA returned by gitManager.commit, not a separate getHeadSha call", async () => {
+    // Verifies the state-drift fix: if getHeadSha throws after commit, commit()
+    // must still succeed because it relies on the SHA returned by gitManager.commit.
+    const mock = makeMockGitManager({
+      commit: vi.fn().mockResolvedValue("abc"),
+      getHeadSha: vi
+        .fn()
+        .mockResolvedValueOnce("sha-base") // initRun call
+        .mockRejectedValue(new Error("getHeadSha must not be called during commit")),
+    });
+    const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
+    await manager.initRun("main");
+
+    manager.setPromptMeta("prompt-1", BASE_PROMPT_META);
+    manager.setExecutionMeta("prompt-1", BASE_EXEC_META);
+
+    const sha = await manager.commit("prompt-1", "exec-001");
+    expect(sha).toBe("abc");
+
+    // Confirm the recorded checkpoint also uses the commit-returned SHA.
+    const checkpoints = await manager.getCheckpoints();
+    expect(checkpoints[0]?.sha).toBe("abc");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -209,7 +230,7 @@ describe("CheckpointManager.commit — with promptMeta and execMeta", () => {
 describe("CheckpointManager.commit — without promptMeta (fallback)", () => {
   it("still commits successfully when no promptMeta is set", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-fallback"),
+      commit: vi.fn().mockResolvedValue("sha-fallback"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -223,7 +244,7 @@ describe("CheckpointManager.commit — without promptMeta (fallback)", () => {
 
   it("uses a fallback message containing the promptId when meta is missing", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-fallback"),
+      commit: vi.fn().mockResolvedValue("sha-fallback"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -238,7 +259,7 @@ describe("CheckpointManager.commit — without promptMeta (fallback)", () => {
 
   it("still passes { allowEmpty: true } even without meta", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-fallback"),
+      commit: vi.fn().mockResolvedValue("sha-fallback"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -279,7 +300,8 @@ describe("CheckpointManager.commit — before initRun", () => {
 describe("CheckpointManager.rollback", () => {
   it("calls resetHard with the given SHA", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-p1"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -294,12 +316,13 @@ describe("CheckpointManager.rollback", () => {
   });
 
   it("removes stale checkpoints after the rollback point", async () => {
-    const shaSequence = ["sha-base", "sha-p1", "sha-p2", "sha-p3"];
-    let callCount = 0;
+    const commitShaSequence = ["sha-p1", "sha-p2", "sha-p3"];
+    let commitCallCount = 0;
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockImplementation(async () => {
-        const sha = shaSequence[callCount] ?? "sha-unknown";
-        callCount++;
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockImplementation(async () => {
+        const sha = commitShaSequence[commitCallCount] ?? "sha-unknown";
+        commitCallCount++;
         return sha;
       }),
     });
@@ -326,7 +349,8 @@ describe("CheckpointManager.rollback", () => {
 
   it("clears all checkpoints when rolling back to baseSha", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-p1"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -343,7 +367,8 @@ describe("CheckpointManager.rollback", () => {
 
   it("throws UNKNOWN_ROLLBACK_TARGET for a SHA not in checkpoint history", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-p1"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -404,7 +429,7 @@ describe("CheckpointManager.finishRun — success: true", () => {
     expect(mock.deleteBranch).not.toHaveBeenCalled();
   });
 
-  it("does not merge when mergeToOriginal: false", async () => {
+  it("does not merge when mergeToOriginal: false (but still deletes branch by default)", async () => {
     const mock = makeMockGitManager({
       getHeadSha: vi.fn().mockResolvedValueOnce("sha-base"),
     });
@@ -412,6 +437,20 @@ describe("CheckpointManager.finishRun — success: true", () => {
     await manager.initRun("main");
 
     await manager.finishRun(true, "main", { mergeToOriginal: false });
+
+    // No merge, but deleteRunBranch defaults to true — so the branch is removed.
+    expect(mock.mergeFastForward).not.toHaveBeenCalled();
+    expect(mock.deleteBranch).toHaveBeenCalledWith("conductor/run-testruni");
+  });
+
+  it("does not merge or delete when both mergeToOriginal: false and deleteRunBranch: false", async () => {
+    const mock = makeMockGitManager({
+      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base"),
+    });
+    const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
+    await manager.initRun("main");
+
+    await manager.finishRun(true, "main", { mergeToOriginal: false, deleteRunBranch: false });
 
     expect(mock.mergeFastForward).not.toHaveBeenCalled();
     expect(mock.deleteBranch).not.toHaveBeenCalled();
@@ -453,10 +492,11 @@ describe("CheckpointManager.getCheckpoints", () => {
   });
 
   it("returns checkpoints in creation order after multiple commits", async () => {
-    const shas = ["sha-base", "sha-p1", "sha-p2", "sha-p3"];
+    const commitShas = ["sha-p1", "sha-p2", "sha-p3"];
     let idx = 0;
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockImplementation(async () => shas[idx++] ?? "sha-unknown"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockImplementation(async () => commitShas[idx++] ?? "sha-unknown"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -476,7 +516,8 @@ describe("CheckpointManager.getCheckpoints", () => {
 
   it("returns a copy so mutations do not affect internal state", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base").mockResolvedValueOnce("sha-p1"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -552,9 +593,9 @@ describe("CheckpointManager — post-finishRun guards", () => {
       getHeadSha: vi
         .fn()
         .mockResolvedValueOnce("sha-base") // initRun
-        .mockResolvedValueOnce("sha-p1") // commit
         .mockResolvedValueOnce("sha-p1") // finishRun: get run tip
         .mockResolvedValueOnce("sha-p1"), // finishRun: post-merge validation
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -578,9 +619,9 @@ describe("CheckpointManager — post-finishRun guards", () => {
       getHeadSha: vi
         .fn()
         .mockResolvedValueOnce("sha-base") // initRun
-        .mockResolvedValueOnce("sha-p1") // commit
         .mockResolvedValueOnce("sha-p1") // finishRun: get run tip
         .mockResolvedValueOnce("sha-p1"), // finishRun: post-merge validation
+      commit: vi.fn().mockResolvedValue("sha-p1"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -598,6 +639,28 @@ describe("CheckpointManager — post-finishRun guards", () => {
       expect((err as CheckpointManagerError).code).toBe("RUN_FINISHED");
     }
   });
+
+  it("finishRun() called twice throws RUN_FINISHED", async () => {
+    const mock = makeMockGitManager({
+      getHeadSha: vi
+        .fn()
+        .mockResolvedValueOnce("sha-base") // initRun
+        .mockResolvedValueOnce("sha-tip") // finishRun: get run tip
+        .mockResolvedValueOnce("sha-tip"), // finishRun: post-merge validation
+    });
+    const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
+    await manager.initRun("main");
+    await manager.finishRun(true, "main");
+
+    await expect(manager.finishRun(true, "main")).rejects.toThrow(CheckpointManagerError);
+
+    try {
+      await manager.finishRun(true, "main");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CheckpointManagerError);
+      expect((err as CheckpointManagerError).code).toBe("RUN_FINISHED");
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -606,12 +669,11 @@ describe("CheckpointManager — post-finishRun guards", () => {
 
 describe("CheckpointManager.rollback — state consistency on failure", () => {
   it("restores checkpoints to original state when resetHard throws", async () => {
+    const commitShas = ["sha-p1", "sha-p2"];
+    let idx = 0;
     const mock = makeMockGitManager({
-      getHeadSha: vi
-        .fn()
-        .mockResolvedValueOnce("sha-base")
-        .mockResolvedValueOnce("sha-p1")
-        .mockResolvedValueOnce("sha-p2"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockImplementation(async () => commitShas[idx++] ?? "sha-unknown"),
       resetHard: vi.fn().mockRejectedValue(new Error("git hard reset failed")),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
@@ -643,13 +705,11 @@ describe("CheckpointManager.rollback — state consistency on failure", () => {
   });
 
   it("new commit appends correctly after a successful rollback", async () => {
+    const commitShas = ["sha-p1", "sha-p2", "sha-p3"];
+    let idx = 0;
     const mock = makeMockGitManager({
-      getHeadSha: vi
-        .fn()
-        .mockResolvedValueOnce("sha-base") // initRun
-        .mockResolvedValueOnce("sha-p1") // commit prompt-1
-        .mockResolvedValueOnce("sha-p2") // commit prompt-2
-        .mockResolvedValueOnce("sha-p3"), // commit prompt-3 (after rollback)
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockImplementation(async () => commitShas[idx++] ?? "sha-unknown"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
@@ -682,8 +742,8 @@ describe("CheckpointManager.rollback — state consistency on failure", () => {
 // finishRun — deleteBranch failure is swallowed
 // ---------------------------------------------------------------------------
 
-describe("CheckpointManager.finishRun — deleteBranch failure is best-effort", () => {
-  it("does not throw when deleteBranch fails after a successful merge", async () => {
+describe("CheckpointManager.finishRun — deleteBranch failure surfaces as BRANCH_DELETE_FAILED", () => {
+  it("throws BRANCH_DELETE_FAILED when deleteBranch fails after a successful merge", async () => {
     const mock = makeMockGitManager({
       getHeadSha: vi
         .fn()
@@ -695,8 +755,15 @@ describe("CheckpointManager.finishRun — deleteBranch failure is best-effort", 
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
     await manager.initRun("main");
 
-    // Should resolve without throwing even though deleteBranch rejects
-    await expect(manager.finishRun(true, "main")).resolves.toBeUndefined();
+    await expect(manager.finishRun(true, "main")).rejects.toThrow(CheckpointManagerError);
+
+    // Subsequent calls must still see the run as finished (set in finally).
+    await expect(manager.commit("prompt-1", "exec-001")).rejects.toThrow(CheckpointManagerError);
+    try {
+      await manager.commit("prompt-1", "exec-001");
+    } catch (err) {
+      expect((err as CheckpointManagerError).code).toBe("RUN_FINISHED");
+    }
   });
 });
 
@@ -705,7 +772,7 @@ describe("CheckpointManager.finishRun — deleteBranch failure is best-effort", 
 // ---------------------------------------------------------------------------
 
 describe("CheckpointManager.finishRun — post-merge validation failure", () => {
-  it("propagates error when getHeadSha throws after mergeFastForward succeeds", async () => {
+  it("propagates error when getHeadSha throws after mergeFastForward succeeds and still marks run as finished", async () => {
     const mock = makeMockGitManager({
       getHeadSha: vi
         .fn()
@@ -718,10 +785,45 @@ describe("CheckpointManager.finishRun — post-merge validation failure", () => 
 
     await expect(manager.finishRun(true, "main")).rejects.toThrow("getHeadSha failed after merge");
 
-    // mergeFastForward was called (succeeded), but the error propagated before finished was set
+    // mergeFastForward was called (succeeded)
     expect(mock.mergeFastForward).toHaveBeenCalledWith("conductor/run-testruni", "main");
     // deleteBranch must NOT have been called since we never reached that point
     expect(mock.deleteBranch).not.toHaveBeenCalled();
+
+    // The `finally` block must have set finished=true even though the merge
+    // validation threw. Verify by attempting another mutation: it must throw
+    // RUN_FINISHED rather than e.g. RUN_NOT_INITIALIZED or proceed silently.
+    try {
+      await manager.commit("prompt-1", "exec-001");
+      throw new Error("commit should have thrown RUN_FINISHED");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CheckpointManagerError);
+      expect((err as CheckpointManagerError).code).toBe("RUN_FINISHED");
+    }
+  });
+
+  it("validateMergeComplete throwing on mismatched SHAs still marks run as finished", async () => {
+    const mock = makeMockGitManager({
+      getHeadSha: vi
+        .fn()
+        .mockResolvedValueOnce("sha-base") // initRun
+        .mockResolvedValueOnce("sha-tip") // finishRun: get run tip
+        .mockResolvedValueOnce("sha-different"), // finishRun: post-merge validation (mismatch!)
+    });
+    const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
+    await manager.initRun("main");
+
+    // validateMergeComplete should throw because the post-merge SHA doesn't
+    // match the pre-merge run-tip SHA.
+    await expect(manager.finishRun(true, "main")).rejects.toThrow();
+
+    // finished must be true via the finally block — verify via guarded method.
+    await expect(manager.commit("prompt-x", "exec-x")).rejects.toThrow(CheckpointManagerError);
+    try {
+      await manager.commit("prompt-x", "exec-x");
+    } catch (err) {
+      expect((err as CheckpointManagerError).code).toBe("RUN_FINISHED");
+    }
   });
 });
 
@@ -752,7 +854,8 @@ describe("CheckpointManager.getDiffForPrompt — before initRun", () => {
 describe("CheckpointManager.getDiffForPrompt", () => {
   it("uses baseSha as fromSha for the first prompt", async () => {
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockResolvedValueOnce("sha-base-000").mockResolvedValueOnce("sha-p1-111"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base-000"),
+      commit: vi.fn().mockResolvedValue("sha-p1-111"),
       getDiff: vi.fn().mockResolvedValue("diff content"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);
@@ -768,10 +871,11 @@ describe("CheckpointManager.getDiffForPrompt", () => {
   });
 
   it("uses previous checkpoint sha as fromSha for subsequent prompts", async () => {
-    const shas = ["sha-base", "sha-p1", "sha-p2"];
+    const commitShas = ["sha-p1", "sha-p2"];
     let callIdx = 0;
     const mock = makeMockGitManager({
-      getHeadSha: vi.fn().mockImplementation(async () => shas[callIdx++] ?? "sha-unknown"),
+      getHeadSha: vi.fn().mockResolvedValue("sha-base"),
+      commit: vi.fn().mockImplementation(async () => commitShas[callIdx++] ?? "sha-unknown"),
       getDiff: vi.fn().mockResolvedValue("diff content"),
     });
     const manager = new CheckpointManager(mock, RUN_ID, WORKING_DIR);

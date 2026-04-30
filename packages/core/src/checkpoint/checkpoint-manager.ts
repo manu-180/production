@@ -166,29 +166,21 @@ export class CheckpointManager {
 
     const message = this.buildCommitMessage(promptId, executionId);
 
-    await this.gitManager.commit(message, { allowEmpty: true });
+    // gitManager.commit already returns the new HEAD SHA — use it directly.
+    // This avoids a second git call (getHeadSha) that could fail and leave
+    // the in-memory checkpoints array out of sync with git history.
+    const sha = await this.gitManager.commit(message, { allowEmpty: true });
 
-    // Always get the SHA — if this throws, we have an orphaned commit but
-    // cannot undo it. Surface a distinct error code so callers can diagnose.
-    let sha: string;
-    try {
-      sha = await this.gitManager.getHeadSha();
-    } catch (err) {
-      throw new CheckpointManagerError(
-        "SHA_FETCH_FAILED",
-        `Commit succeeded but getHeadSha failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    const entry: CheckpointEntry = {
+    // Constructing and pushing the entry only after the commit call succeeded
+    // means: if the git op throws, the array stays consistent (no entry leaks).
+    // Array.push on a normal array cannot fail synchronously.
+    this.checkpoints.push({
       promptId,
       executionId,
       sha,
       message,
       createdAt: new Date(),
-    };
-
-    this.checkpoints.push(entry);
+    });
 
     return sha;
   }
@@ -256,38 +248,61 @@ export class CheckpointManager {
     originalBranch: string,
     opts?: { mergeToOriginal?: boolean; deleteRunBranch?: boolean },
   ): Promise<void> {
+    if (this.finished) {
+      throw new CheckpointManagerError(
+        "RUN_FINISHED",
+        "finishRun() has already been called for this run.",
+      );
+    }
+
     const mergeToOriginal = opts?.mergeToOriginal ?? true;
     const deleteRunBranch = opts?.deleteRunBranch ?? true;
 
-    if (success && mergeToOriginal && this.runBranch !== null) {
-      const runBranch = this.runBranch;
+    try {
+      if (success && this.runBranch !== null) {
+        const runBranch = this.runBranch;
 
-      // Capture the run branch tip SHA before the merge so we can validate.
-      const runTipSha = await this.gitManager.getHeadSha();
+        if (mergeToOriginal) {
+          // Capture the run branch tip SHA before the merge so we can validate.
+          const runTipSha = await this.gitManager.getHeadSha();
 
-      await this.gitManager.mergeFastForward(runBranch, originalBranch);
+          await this.gitManager.mergeFastForward(runBranch, originalBranch);
 
-      // Validate the merge completed correctly.
-      const postMergeHeadSha = await this.gitManager.getHeadSha();
-      SafetyGuards.validateMergeComplete(runTipSha, postMergeHeadSha);
-
-      // Mark run as finished before branch cleanup so subsequent calls are
-      // blocked even if deleteBranch throws.
-      this.finished = true;
-      this.runBranch = null;
-
-      if (deleteRunBranch) {
-        try {
-          await this.gitManager.deleteBranch(runBranch);
-        } catch {
-          // Best-effort cleanup — the merge succeeded, so the run is complete.
-          // A stale branch is a minor annoyance, not a correctness issue.
+          // Validate the merge completed correctly. If this throws, the
+          // run branch is left intact for inspection (deleteBranch is skipped
+          // because we never reach it).
+          const postMergeHeadSha = await this.gitManager.getHeadSha();
+          SafetyGuards.validateMergeComplete(runTipSha, postMergeHeadSha);
         }
+
+        // Only attempt branch deletion after merge has been validated (or
+        // explicitly skipped). If deletion fails, surface a distinct error
+        // code so the caller can react — the merge itself succeeded.
+        if (deleteRunBranch) {
+          try {
+            await this.gitManager.deleteBranch(runBranch);
+          } catch (err) {
+            throw new CheckpointManagerError(
+              "BRANCH_DELETE_FAILED",
+              `Run completed and merged successfully, but failed to delete branch ${runBranch}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+
+        // Clear the runBranch reference now that cleanup has succeeded.
+        this.runBranch = null;
+      } else if (!success) {
+        // On failure: return to the original branch and leave the run branch
+        // intact so the developer can inspect what happened.
+        await this.gitManager.checkout(originalBranch);
       }
-    } else if (!success) {
-      // On failure: return to the original branch and leave the run branch
-      // intact so the developer can inspect what happened.
-      await this.gitManager.checkout(originalBranch);
+    } finally {
+      // Always mark the run as finished — even if merge validation, branch
+      // deletion, or checkout threw — so subsequent commit/rollback calls
+      // are blocked. The run is over either way.
+      this.finished = true;
     }
   }
 
