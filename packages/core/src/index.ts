@@ -6,6 +6,7 @@ export * from "./orchestrator/index.js";
 export * from "./guardian/index.js";
 export * from "./checkpoint/index.js";
 export * from "./recovery/index.js";
+export * from "./observability/index.js";
 export {
   ClaudeProcess,
   StreamParser,
