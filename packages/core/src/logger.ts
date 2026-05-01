@@ -2,25 +2,52 @@ import pino, { type Logger, type LoggerOptions } from "pino";
 
 export type { Logger };
 
-const defaultOptions: LoggerOptions = {
-  level: process.env["LOG_LEVEL"] ?? "info",
+export const REDACT_PATHS = [
+  "password",
+  "token",
+  "encrypted_token",
+  "iv",
+  "*.password",
+  "*.token",
+  "*.encrypted_token",
+  "*.iv",
+  "[*].password",
+  "[*].token",
+  "[*].encrypted_token",
+  "[*].iv",
+];
+
+const BASE_BINDINGS = {
+  service: "conductor",
+  env: process.env["NODE_ENV"] ?? "development",
 };
 
 /**
  * Create a named pino logger.
  * In non-production environments, uses pino-pretty if available.
- * Pass a `name` to identify the subsystem in log output.
+ * Every log line includes `service`, `env`, and `component` fields.
+ * Sensitive fields (token, password, encrypted_token, iv) are redacted.
  */
 export function createLogger(name: string, opts?: LoggerOptions): Logger {
-  const transport =
-    process.env["NODE_ENV"] !== "production"
-      ? {
-          target: "pino-pretty",
-          options: { colorize: true, translateTime: "SYS:standard" },
-        }
-      : undefined;
+  const isProd = process.env["NODE_ENV"] === "production";
 
-  return pino({ ...defaultOptions, ...opts, name, transport });
+  const transport = !isProd
+    ? {
+        target: "pino-pretty",
+        options: { colorize: true, translateTime: "SYS:standard" },
+      }
+    : undefined;
+
+  return pino({
+    level: process.env["LOG_LEVEL"] ?? "info",
+    base: { ...BASE_BINDINGS, component: name },
+    redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
+    formatters: {
+      level: (label: string) => ({ level: label }),
+    },
+    ...opts,
+    transport,
+  });
 }
 
 /** Singleton root logger for quick usage (prefer createLogger for named loggers). */
