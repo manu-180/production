@@ -1,6 +1,8 @@
 "use client";
+import { cn } from "@/lib/utils";
 import {
   ActivityIcon,
+  BarChart2Icon,
   FileTextIcon,
   HomeIcon,
   LayersIcon,
@@ -8,7 +10,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { ClaudeAuthStatus } from "./claude-auth-status";
 import { SystemStatusIndicator } from "./system-status-indicator";
 
@@ -31,6 +32,12 @@ const NAV: NavItem[] = [
     label: "Runs",
     icon: ActivityIcon,
     match: (p) => p.startsWith("/dashboard/runs"),
+  },
+  {
+    href: "/dashboard/insights",
+    label: "Insights",
+    icon: BarChart2Icon,
+    match: (p) => p.startsWith("/dashboard/insights"),
   },
   {
     href: "/dashboard/plans",
