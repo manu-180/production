@@ -68,4 +68,4 @@ conductor/
 - [x] 09 — Recovery (retry, resume, rate limits, heartbeat, crash recovery)
 - [x] 10 — API
 - [x] 11 — UI Dashboard (live runs, KPIs, settings)
-- [ ] 12 — UI Editor (plan/prompt editor) ← NEXT
+- [x] 12 — UI Editor (plan/prompt editor)
