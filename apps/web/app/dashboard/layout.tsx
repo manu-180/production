@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CommandPalette } from "./_components/command-palette";
+import { DashboardProviders } from "./_components/dashboard-providers";
 import { Sidebar } from "./_components/sidebar";
 import { Topbar } from "./_components/topbar";
 
@@ -19,7 +19,8 @@ export default function DashboardLayout({
         <Topbar />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
-      <CommandPalette />
+      {/* Client boundary: CommandPalette + ShortcutsModal + useShortcuts */}
+      <DashboardProviders />
     </div>
   );
 }
