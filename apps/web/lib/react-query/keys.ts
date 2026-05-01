@@ -18,5 +18,6 @@ export const qk = {
   kpis: () => ["dashboard", "kpis"] as const,
   insights: {
     metrics: (days: number) => ["insights", "metrics", days] as const,
+    audit: (params: Record<string, unknown>) => ["insights", "audit", params] as const,
   },
 } as const;
