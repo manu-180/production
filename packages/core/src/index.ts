@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./integrations/github/index.js";
 export * from "./utils/result.js";
 export * from "./logger.js";
 export * from "./auth/index.js";

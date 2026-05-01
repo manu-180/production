@@ -53,6 +53,10 @@ export type Schedule = Database["public"]["Tables"]["schedules"]["Row"];
 export type ScheduleInsert = Database["public"]["Tables"]["schedules"]["Insert"];
 export type ScheduleUpdate = Database["public"]["Tables"]["schedules"]["Update"];
 
+export type WebhookEndpoint = Database["public"]["Tables"]["webhook_endpoints"]["Row"];
+export type WebhookEndpointInsert = Database["public"]["Tables"]["webhook_endpoints"]["Insert"];
+export type WebhookEndpointUpdate = Database["public"]["Tables"]["webhook_endpoints"]["Update"];
+
 // ─── Run status literals ──────────────────────────────────────────────────────
 export type RunStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled";
 

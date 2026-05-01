@@ -489,6 +489,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      webhook_endpoints: {
+        Row: {
+          id: string;
+          user_id: string;
+          plan_id: string;
+          name: string;
+          secret: string;
+          source: string;
+          github_event: string | null;
+          enabled: boolean;
+          last_triggered_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          plan_id: string;
+          name: string;
+          secret: string;
+          source?: string;
+          github_event?: string | null;
+          enabled?: boolean;
+          last_triggered_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          plan_id?: string;
+          name?: string;
+          secret?: string;
+          source?: string;
+          github_event?: string | null;
+          enabled?: boolean;
+          last_triggered_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "webhook_endpoints_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notification_preferences: {
         Row: {
           id: string;
