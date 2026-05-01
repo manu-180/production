@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 interface SettingsRow {
   user_id: string;
   theme: string;
+  color_theme: string;
   auto_approve_low_risk: boolean;
   default_model: string;
   git_auto_commit: boolean;
@@ -19,6 +20,7 @@ interface SettingsRow {
 
 const DEFAULTS: Omit<SettingsRow, "user_id" | "updated_at"> = {
   theme: "system",
+  color_theme: "conductor-classic",
   auto_approve_low_risk: false,
   default_model: "sonnet",
   git_auto_commit: true,

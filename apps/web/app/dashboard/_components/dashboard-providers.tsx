@@ -3,6 +3,7 @@
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { ShortcutsModal } from "@/components/shortcuts-modal";
 import { useShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useThemeConfig } from "@/hooks/use-theme-config";
 import { qk } from "@/lib/react-query/keys";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
@@ -21,6 +22,9 @@ interface SettingsRow {
 export function DashboardProviders() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+
+  // Apply color theme class to <html> element
+  useThemeConfig();
 
   const { data: settings } = useQuery<SettingsRow>({
     queryKey: qk.settings.detail(),

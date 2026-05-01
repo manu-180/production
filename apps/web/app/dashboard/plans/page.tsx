@@ -1,10 +1,11 @@
 "use client";
 
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useDeletePlan } from "@/hooks/use-plan-mutations";
 import { usePlansList } from "@/hooks/use-plans-list";
-import { FileTextIcon, LayersIcon, PlusIcon } from "lucide-react";
+import { LayersIcon, PlusIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -152,20 +153,11 @@ export default function PlansPage() {
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-            <FileTextIcon className="size-6 text-muted-foreground" aria-hidden="true" />
-          </div>
-          <div>
-            <p className="font-medium text-foreground">No plans yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Create your first plan to start orchestrating prompts.
-            </p>
-          </div>
-          <Button size="sm" render={<Link href="/dashboard/plans/new" />}>
-            Create your first plan
-          </Button>
-        </div>
+        <EmptyState
+          type="plans"
+          description="Create your first plan to start orchestrating prompts."
+          action={{ label: "Create Plan", href: "/dashboard/plans/new" }}
+        />
       )}
 
       {/* Plans grid */}

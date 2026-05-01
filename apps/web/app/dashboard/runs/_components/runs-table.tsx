@@ -1,8 +1,5 @@
 "use client";
-import type { Run } from "@conductor/db";
-import { ChevronRightIcon } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useMemo, useRef } from "react";
+import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,9 +11,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useRunsList, type RunsListParams } from "@/hooks/use-runs-list";
+import { type RunsListParams, useRunsList } from "@/hooks/use-runs-list";
 import { formatCostUsd, formatDuration, formatRelativeTime } from "@/lib/ui/format";
 import type { RunStatus } from "@/lib/ui/status";
+import type { Run } from "@conductor/db";
+import { ChevronRightIcon } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef } from "react";
 import { RunStatusBadge } from "./run-status-badge";
 
 function rowDuration(r: Run): string {
@@ -50,18 +51,13 @@ export function RunsTable({ filters, searchClient }: Props) {
     return () => io.disconnect();
   }, [query]);
 
-  const allRuns = useMemo(
-    () => query.data?.pages.flatMap((p) => p.runs) ?? [],
-    [query.data],
-  );
+  const allRuns = useMemo(() => query.data?.pages.flatMap((p) => p.runs) ?? [], [query.data]);
 
   const filtered = useMemo(() => {
     if (!searchClient) return allRuns;
     const q = searchClient.toLowerCase();
     return allRuns.filter(
-      (r) =>
-        r.id.toLowerCase().includes(q) ||
-        r.working_dir.toLowerCase().includes(q),
+      (r) => r.id.toLowerCase().includes(q) || r.working_dir.toLowerCase().includes(q),
     );
   }, [allRuns, searchClient]);
 
@@ -92,12 +88,16 @@ export function RunsTable({ filters, searchClient }: Props) {
 
   if (filtered.length === 0) {
     return (
-      <Card>
-        <div className="flex flex-col items-center gap-2 p-12 text-center">
-          <p className="text-sm font-medium">No runs match your filters.</p>
-          <p className="text-xs text-muted-foreground">Try clearing the filter or trigger a new run.</p>
-        </div>
-      </Card>
+      <EmptyState
+        type="runs"
+        title={searchClient ? "No runs match your search" : "No runs yet"}
+        description={
+          searchClient
+            ? "Try a different search term or clear the filter"
+            : "Launch a plan to see your runs here"
+        }
+        action={{ label: "Browse Plans", href: "/dashboard/plans" }}
+      />
     );
   }
 
@@ -128,9 +128,7 @@ export function RunsTable({ filters, searchClient }: Props) {
                   >
                     {r.working_dir}
                   </Link>
-                  <div className="font-mono text-[10px] text-muted-foreground">
-                    {r.id}
-                  </div>
+                  <div className="font-mono text-[10px] text-muted-foreground">{r.id}</div>
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                   {formatRelativeTime(r.created_at)}

@@ -1,19 +1,21 @@
 "use client";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { type ColorTheme, useThemeConfig } from "@/hooks/use-theme-config";
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { qk } from "@/lib/react-query/keys";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface SettingsRow {
   user_id: string;
   theme: "light" | "dark" | "system";
+  color_theme: ColorTheme;
   auto_approve_low_risk: boolean;
   default_model: string;
   git_auto_commit: boolean;
@@ -22,7 +24,12 @@ interface SettingsRow {
   updated_at: string | null;
 }
 
-type Patch = Partial<Pick<SettingsRow, "theme" | "auto_approve_low_risk" | "default_model" | "git_auto_commit" | "git_auto_push">>;
+type Patch = Partial<
+  Pick<
+    SettingsRow,
+    "theme" | "auto_approve_low_risk" | "default_model" | "git_auto_commit" | "git_auto_push"
+  >
+>;
 
 export function SettingsForm() {
   const qc = useQueryClient();
@@ -46,8 +53,7 @@ export function SettingsForm() {
   }, [query.data, draft]);
 
   const mutation = useMutation({
-    mutationFn: (patch: Patch) =>
-      apiClient.patch<SettingsRow>("/api/settings", patch),
+    mutationFn: (patch: Patch) => apiClient.patch<SettingsRow>("/api/settings", patch),
     onSuccess: (data) => {
       toast.success("Settings saved");
       qc.setQueryData(qk.settings.detail(), data);
@@ -100,9 +106,7 @@ export function SettingsForm() {
             <Input
               id="default-model"
               value={draft.default_model ?? ""}
-              onChange={(e) =>
-                setDraft({ ...draft, default_model: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, default_model: e.target.value })}
               placeholder="sonnet | opus | haiku"
               maxLength={100}
             />
@@ -112,7 +116,7 @@ export function SettingsForm() {
           </div>
 
           <div className="space-y-2">
-            <Label>Theme</Label>
+            <Label>Mode</Label>
             <div className="flex flex-wrap gap-2">
               {(["light", "dark", "system"] as const).map((t) => (
                 <button
@@ -132,6 +136,8 @@ export function SettingsForm() {
           </div>
         </CardContent>
       </Card>
+
+      <AppearanceSection />
 
       <Card>
         <CardContent className="space-y-5 p-6">
@@ -190,5 +196,92 @@ function ToggleRow({
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
+  );
+}
+
+// ─── Appearance / color theme section ────────────────────────────────────────
+
+interface ThemeOption {
+  value: ColorTheme;
+  label: string;
+  /** oklch primary color for the preview swatch */
+  swatch: string;
+  description: string;
+}
+
+const THEME_OPTIONS: ThemeOption[] = [
+  {
+    value: "conductor-classic",
+    label: "Conductor Classic",
+    swatch: "oklch(0.205 0 0)",
+    description: "Default monochrome palette",
+  },
+  {
+    value: "midnight",
+    label: "Midnight",
+    swatch: "oklch(0.55 0.2 264)",
+    description: "Deep indigo & violet",
+  },
+  {
+    value: "solarized",
+    label: "Solarized",
+    swatch: "oklch(0.75 0.18 80)",
+    description: "Warm amber & teal",
+  },
+];
+
+function AppearanceSection() {
+  const { theme, setTheme, isPending } = useThemeConfig();
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-6">
+        <h3 className="font-heading text-base font-semibold">Appearance</h3>
+        <fieldset className="space-y-2" disabled={isPending}>
+          <legend className="text-sm font-medium leading-none">Color theme</legend>
+          <p className="text-xs text-muted-foreground">
+            Changes the primary accent colors throughout the interface. Works with both light and
+            dark mode.
+          </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {THEME_OPTIONS.map((opt) => {
+              const isSelected = theme === opt.value;
+              return (
+                <label
+                  key={opt.value}
+                  className={`flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 ${
+                    isSelected
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-muted-foreground/40 hover:bg-muted/40"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="color-theme"
+                    value={opt.value}
+                    checked={isSelected}
+                    onChange={() => setTheme(opt.value)}
+                    className="sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="block size-8 rounded-full border border-black/10 dark:border-white/10"
+                    style={{ backgroundColor: opt.swatch }}
+                  />
+                  <span className="space-y-0.5">
+                    <span
+                      className={`block text-sm font-medium ${isSelected ? "text-primary" : "text-foreground"}`}
+                    >
+                      {opt.label}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">{opt.description}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      </CardContent>
+    </Card>
   );
 }
