@@ -50,3 +50,4 @@ apps/worker/dist/
 
 # TypeScript
 *.tsbuildinfo
+.worktrees/
