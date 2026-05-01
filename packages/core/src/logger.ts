@@ -40,12 +40,17 @@ export function createLogger(name: string, opts?: LoggerOptions): Logger {
 
   return pino({
     level: process.env["LOG_LEVEL"] ?? "info",
-    base: { ...BASE_BINDINGS, component: name },
+    ...opts,
+    // Security-critical fields always applied last — opts cannot override them
+    base: {
+      ...(opts?.base as Record<string, unknown> | undefined),
+      ...BASE_BINDINGS,
+      component: name,
+    },
     redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
     formatters: {
       level: (label: string) => ({ level: label }),
     },
-    ...opts,
     transport,
   });
 }
