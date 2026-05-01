@@ -363,6 +363,14 @@ export class RunHandler {
         resourceId: this._runId,
         metadata: { status },
       });
+    } else if (status === "cancelled") {
+      void audit.log({
+        actor: "worker",
+        action: "run.cancelled",
+        resourceType: "run",
+        resourceId: this._runId,
+        metadata: { status },
+      });
     } else {
       void audit.log({
         actor: "worker",

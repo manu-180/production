@@ -89,17 +89,18 @@ export const POST = defineRoute<PlanCreate>(
       });
     }
 
+    const svc = createServiceClient();
+    const audit = new AuditLogger(svc as unknown as DbClient);
+    void audit.log({
+      actor: "user",
+      action: "plan.created",
+      userId: user.userId,
+      resourceType: "plan",
+      resourceId: plan.id,
+      metadata: { name: body.name },
+    });
+
     if (body.prompts === undefined || body.prompts.length === 0) {
-      const svc = createServiceClient();
-      const audit = new AuditLogger(svc as unknown as DbClient);
-      void audit.log({
-        actor: "user",
-        action: "plan.created",
-        userId: user.userId,
-        resourceType: "plan",
-        resourceId: plan.id,
-        metadata: { name: body.name },
-      });
       return respond({ ...plan, prompts: [] }, { status: 201, traceId });
     }
 
@@ -128,16 +129,6 @@ export const POST = defineRoute<PlanCreate>(
       });
     }
 
-    const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
-    void audit.log({
-      actor: "user",
-      action: "plan.created",
-      userId: user.userId,
-      resourceType: "plan",
-      resourceId: plan.id,
-      metadata: { name: body.name },
-    });
     return respond({ ...plan, prompts: prompts ?? [] }, { status: 201, traceId });
   },
 );
