@@ -8,6 +8,7 @@ export * from "./checkpoint/index.js";
 export * from "./recovery/index.js";
 export * from "./observability/index.js";
 export * from "./notifications/index.js";
+export * from "./scheduler/index.js";
 export {
   ClaudeProcess,
   StreamParser,
