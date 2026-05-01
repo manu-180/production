@@ -38,6 +38,7 @@ ALTER TABLE public.audit_log
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
 -- Users can read only their own audit log entries
+-- TO authenticated ensures anon sessions cannot match NULL user_id system-actor rows
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -49,6 +50,7 @@ BEGIN
     CREATE POLICY "audit_log_select_own"
       ON public.audit_log
       FOR SELECT
+      TO authenticated
       USING (auth.uid() = user_id);
   END IF;
 END$$;
@@ -58,16 +60,34 @@ REVOKE UPDATE, DELETE ON public.audit_log FROM service_role;
 REVOKE UPDATE, DELETE ON public.audit_log FROM authenticated;
 REVOKE UPDATE, DELETE ON public.audit_log FROM anon;
 
+-- WORM trigger: hard-blocks UPDATE/DELETE even for service_role (which bypasses RLS)
+CREATE OR REPLACE FUNCTION public.audit_log_deny_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_log is insert-only (WORM): % is not permitted', TG_OP;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS audit_log_worm_guard ON public.audit_log;
+CREATE TRIGGER audit_log_worm_guard
+  BEFORE UPDATE OR DELETE ON public.audit_log
+  FOR EACH ROW EXECUTE FUNCTION public.audit_log_deny_mutation();
+
 -- ─── 3) Indexes on audit_log ──────────────────────────────────────────────────
 
-CREATE INDEX IF NOT EXISTS audit_log_user_action_idx
-  ON public.audit_log(user_id, action);
+-- Primary lookup: "show me my recent entries" — user_id + recency
+CREATE INDEX IF NOT EXISTS audit_log_user_created_at_idx
+  ON public.audit_log(user_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS audit_log_created_at_idx
   ON public.audit_log(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS audit_log_resource_idx
   ON public.audit_log(resource_type, resource_id);
+
+-- Separate index for action filtering
+CREATE INDEX IF NOT EXISTS audit_log_action_idx
+  ON public.audit_log(action);
 
 -- ─── 4) Materialized view: metrics_runs_daily ────────────────────────────────
 -- Drop and recreate is the only safe idempotent pattern for materialized views
@@ -76,7 +96,7 @@ CREATE INDEX IF NOT EXISTS audit_log_resource_idx
 DROP MATERIALIZED VIEW IF EXISTS public.metrics_runs_daily;
 CREATE MATERIALIZED VIEW public.metrics_runs_daily AS
 SELECT
-  date_trunc('day', created_at)                                              AS day,
+  date_trunc('day', started_at)                                              AS day,
   user_id,
   count(*)                                                                   AS total_runs,
   count(*) FILTER (WHERE status = 'completed')                               AS successful,
@@ -88,6 +108,7 @@ SELECT
   sum(total_input_tokens)                                                    AS total_input,
   sum(total_output_tokens)                                                   AS total_output
 FROM public.runs
+WHERE started_at IS NOT NULL
 GROUP BY 1, 2;
 
 CREATE UNIQUE INDEX metrics_runs_daily_pk
