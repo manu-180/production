@@ -7,6 +7,7 @@ import {
   FileTextIcon,
   HomeIcon,
   LayersIcon,
+  LinkIcon,
   SettingsIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -59,6 +60,12 @@ const NAV: NavItem[] = [
     match: (p) => p.startsWith("/dashboard/templates"),
   },
   {
+    href: "/dashboard/integrations",
+    label: "Integrations",
+    icon: LinkIcon,
+    match: (p) => p.startsWith("/dashboard/integrations"),
+  },
+  {
     href: "/dashboard/settings",
     label: "Settings",
     icon: SettingsIcon,
@@ -94,6 +101,7 @@ export function Sidebar({ className }: { className?: string }) {
             if (item.label === "Plans") return "nav-plans";
             if (item.label === "Schedules") return "nav-schedules";
             if (item.label === "Templates") return "nav-templates";
+            if (item.label === "Integrations") return "nav-integrations";
             if (item.label === "Settings") return "nav-settings";
             return undefined;
           };

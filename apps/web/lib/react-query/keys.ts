@@ -25,6 +25,11 @@ export const qk = {
   },
   system: { health: () => ["system", "health"] as const },
   kpis: () => ["dashboard", "kpis"] as const,
+  integrations: {
+    all: () => ["integrations"] as const,
+    list: () => ["integrations", "list"] as const,
+    detail: (id: string) => ["integrations", "detail", id] as const,
+  },
   insights: {
     metrics: (days: number) => ["insights", "metrics", days] as const,
     audit: (params: Record<string, unknown>) => ["insights", "audit", params] as const,
