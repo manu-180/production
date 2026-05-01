@@ -13,6 +13,7 @@ interface SettingsRow {
   git_auto_commit: boolean;
   git_auto_push: boolean;
   notification_channels: unknown;
+  onboarding_completed?: boolean;
   updated_at?: string;
 }
 
@@ -23,6 +24,7 @@ const DEFAULTS: Omit<SettingsRow, "user_id" | "updated_at"> = {
   git_auto_commit: true,
   git_auto_push: false,
   notification_channels: {},
+  onboarding_completed: false,
 };
 
 /**

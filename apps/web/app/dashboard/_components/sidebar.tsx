@@ -83,14 +83,25 @@ export function Sidebar({ className }: { className?: string }) {
         </span>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 p-3">
+      <nav className="flex flex-1 flex-col gap-0.5 p-3" data-tour="sidebar">
         {NAV.map((item) => {
           const Icon = item.icon;
           const active = item.match(pathname);
+          const getTourAttribute = () => {
+            if (item.label === "Dashboard") return "nav-dashboard";
+            if (item.label === "Runs") return "nav-runs";
+            if (item.label === "Insights") return "nav-insights";
+            if (item.label === "Plans") return "nav-plans";
+            if (item.label === "Schedules") return "nav-schedules";
+            if (item.label === "Templates") return "nav-templates";
+            if (item.label === "Settings") return "nav-settings";
+            return undefined;
+          };
           return (
             <Link
               key={item.href}
               href={item.href}
+              data-tour={getTourAttribute()}
               className={cn(
                 "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active

@@ -1,12 +1,19 @@
 "use client";
 
+import { OnboardingTour } from "@/components/onboarding-tour";
 import { ShortcutsModal } from "@/components/shortcuts-modal";
 import { useShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { qk } from "@/lib/react-query/keys";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { CommandPalette } from "./command-palette";
 
+interface SettingsRow {
+  onboarding_completed?: boolean;
+}
+
 /**
- * Client boundary that wires together the CommandPalette and ShortcutsModal.
+ * Client boundary that wires together the CommandPalette, ShortcutsModal, and OnboardingTour.
  *
  * Rendered inside the server DashboardLayout so both overlays are available
  * everywhere in the dashboard without turning the layout into a client component.
@@ -14,6 +21,15 @@ import { CommandPalette } from "./command-palette";
 export function DashboardProviders() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+
+  const { data: settings } = useQuery<SettingsRow>({
+    queryKey: qk.settings.detail(),
+    queryFn: async () => {
+      const response = await fetch("/api/settings");
+      if (!response.ok) throw new Error("Failed to fetch settings");
+      return response.json();
+    },
+  });
 
   const onOpenCommandPalette = useCallback(() => setCommandPaletteOpen(true), []);
   const onShowShortcutsModal = useCallback(() => setShortcutsModalOpen(true), []);
@@ -28,6 +44,7 @@ export function DashboardProviders() {
         onShowShortcuts={onShowShortcutsModal}
       />
       <ShortcutsModal open={shortcutsModalOpen} onOpenChange={setShortcutsModalOpen} />
+      <OnboardingTour onboardingCompleted={settings?.onboarding_completed ?? false} />
     </>
   );
 }

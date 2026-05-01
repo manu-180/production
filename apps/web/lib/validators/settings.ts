@@ -8,6 +8,7 @@ export const settingsUpdateSchema = z
     git_auto_push: z.boolean().optional(),
     notification_channels: z.record(z.string(), z.unknown()).optional(),
     theme: z.enum(["light", "dark", "system"]).optional(),
+    onboarding_completed: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "at least one field is required" });
 
