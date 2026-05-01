@@ -1,3 +1,20 @@
+/** Returns an ISO date string (YYYY-MM-DD) for N days ago (UTC). */
+export function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Formats a USD cost for display in the insights UI.
+ * Shows "$0.00" for zero, "< $0.01" for sub-cent values, otherwise 2 decimals.
+ */
+export function formatUsd(value: number): string {
+  if (value === 0) return "$0.00";
+  if (value < 0.01) return "< $0.01";
+  return `$${value.toFixed(2)}`;
+}
+
 /** Formats a token count: `842`, `12.3k`, `2.5M`. */
 export function formatTokens(n: number): string {
   if (n < 1000) return String(n);

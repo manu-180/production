@@ -3,6 +3,7 @@ import { KpiCard } from "@/app/dashboard/_components/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInsightsMetrics } from "@/hooks/use-insights-metrics";
+import { daysAgoIso, formatUsd } from "@/lib/ui/format";
 import { Activity, Clock, DollarSign, TrendingUp } from "lucide-react";
 import { CostBreakdown } from "./_components/cost-breakdown";
 import { Leaderboard } from "./_components/leaderboard";
@@ -10,12 +11,6 @@ import { PieChart } from "./_components/pie-chart";
 import { TimeSeriesChart } from "./_components/time-series-chart";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return "—";
@@ -27,16 +22,10 @@ function formatPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(1)}%`;
 }
 
-function formatUsd(value: number): string {
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return "< $0.01";
-  return `$${value.toFixed(2)}`;
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InsightsOverviewPage() {
-  const { data, isLoading } = useInsightsMetrics(30);
+  const { data, isLoading, isError } = useInsightsMetrics(30);
 
   // ── KPI calculations (last 7 days) ──────────────────────────────────────────
   const since7d = daysAgoIso(7);
@@ -87,6 +76,12 @@ export default function InsightsOverviewPage() {
 
   return (
     <div className="mx-auto max-w-7xl flex flex-col gap-8 pb-10">
+      {isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          Failed to load metrics. Refresh to try again.
+        </div>
+      )}
+
       {/* ── Section 1: KPI cards ── */}
       <section>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

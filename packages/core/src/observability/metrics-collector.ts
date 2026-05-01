@@ -98,19 +98,39 @@ export class MetricsCollector {
   }
 
   /**
-   * Returns aggregate prompt metrics, optionally filtered by planId.
+   * Returns aggregate prompt metrics, optionally filtered by planId and/or
+   * scoped to a specific user (prevents cross-user data leaks when using the
+   * service-role client that bypasses RLS).
    */
-  async getPromptsAggregate(planId?: string): Promise<PromptMetric[]> {
+  async getPromptsAggregate(planId?: string, userId?: string): Promise<PromptMetric[]> {
     try {
-      let query = this.db.from(PROMPTS_AGGREGATE_VIEW).select("*");
-      if (planId !== undefined) {
-        query = query.eq("plan_id", planId);
+      // If userId provided, first resolve their plan IDs so we can scope the query.
+      let allowedPlanIds: string[] | null = null;
+      if (userId !== undefined) {
+        const plansResult = await this.db.from("plans").select("id").eq("user_id", userId);
+        if (plansResult.error !== null) {
+          this.logger.warn(
+            { err: plansResult.error.message, userId },
+            "getPromptsAggregate: plans lookup failed",
+          );
+          return [];
+        }
+        allowedPlanIds = (plansResult.data ?? [])
+          .map((r) => r["id"])
+          .filter((id): id is string => typeof id === "string");
+        // User exists but has no plans — nothing to return.
+        if (allowedPlanIds.length === 0) return [];
       }
+
+      let query = this.db.from(PROMPTS_AGGREGATE_VIEW).select("*");
+      if (planId !== undefined) query = query.eq("plan_id", planId);
+      if (allowedPlanIds !== null) query = query.in("plan_id", allowedPlanIds);
+
       const result = await query;
 
       if (result.error !== null) {
         this.logger.warn(
-          { err: result.error.message, planId },
+          { err: result.error.message, planId, userId },
           "metrics_prompts_aggregate query failed",
         );
         return [];
@@ -119,7 +139,7 @@ export class MetricsCollector {
       return (result.data ?? []).map(rowToPromptMetric);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn({ err: message, planId }, "getPromptsAggregate threw");
+      this.logger.warn({ err: message, planId, userId }, "getPromptsAggregate threw");
       return [];
     }
   }

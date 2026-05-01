@@ -1,4 +1,5 @@
 "use client";
+import { daysAgoIso, formatUsd } from "@/lib/ui/format";
 import type { RunsDailyMetric } from "@conductor/core";
 
 interface CostBreakdownProps {
@@ -7,18 +8,6 @@ interface CostBreakdownProps {
 
 function sumCost(rows: RunsDailyMetric[]): number {
   return rows.reduce((acc, r) => acc + r.totalCostUsd, 0);
-}
-
-function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-function formatUsd(value: number): string {
-  if (value === 0) return "$0.00";
-  if (value < 0.01) return "< $0.01";
-  return `$${value.toFixed(2)}`;
 }
 
 export function CostBreakdown({ runsByDay }: CostBreakdownProps) {

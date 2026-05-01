@@ -28,7 +28,7 @@ export const GET = defineRoute<undefined, InsightsMetricsQuery>(
 
       const [runsByDay, promptStats, guardianByDay] = await Promise.all([
         collector.getRunsDaily(user.userId, query.days),
-        collector.getPromptsAggregate(),
+        collector.getPromptsAggregate(undefined, user.userId),
         collector.getGuardianDaily(query.days),
       ]);
 
