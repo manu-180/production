@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, BarChart3, TrendingUp } from "lucide-react";
+import { useMemo } from "react";
 
 import { KpiCard } from "@/app/dashboard/_components/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,13 +81,15 @@ export default function GuardianInsightsPage() {
     color: STRATEGY_COLORS[s],
   }));
 
-  // ─── Daily table (sorted DESC by day) ─────────────────────────────────────
-
-  const sortedRows = [...guardianByDay].sort((a, b) => {
-    const dayCmp = b.day.localeCompare(a.day);
-    if (dayCmp !== 0) return dayCmp;
-    return a.strategy.localeCompare(b.strategy);
-  });
+  const sortedRows = useMemo(
+    () =>
+      [...guardianByDay].sort((a, b) => {
+        const dayCmp = b.day.localeCompare(a.day);
+        if (dayCmp !== 0) return dayCmp;
+        return a.strategy.localeCompare(b.strategy);
+      }),
+    [guardianByDay],
+  );
 
   // ─── Render ────────────────────────────────────────────────────────────────
 

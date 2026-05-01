@@ -1,5 +1,6 @@
 "use client";
 import type { GuardianDailyMetric } from "@conductor/core";
+import { useMemo } from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 interface ConfidenceTrendChartProps {
@@ -7,10 +8,34 @@ interface ConfidenceTrendChartProps {
 }
 
 function formatDay(day: string): string {
-  return new Date(day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  // Parse YYYY-MM-DD as local midnight to avoid UTC→local shift on date labels
+  const parts = day.split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function ConfidenceTrendChart({ data }: ConfidenceTrendChartProps) {
+  const chartData = useMemo(() => {
+    const byDay = new Map<string, { totalWeight: number; weightedSum: number }>();
+    for (const row of data) {
+      const existing = byDay.get(row.day) ?? { totalWeight: 0, weightedSum: 0 };
+      existing.totalWeight += row.totalDecisions;
+      existing.weightedSum += row.avgConfidence * row.totalDecisions;
+      byDay.set(row.day, existing);
+    }
+    return Array.from(byDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, { totalWeight, weightedSum }]) => ({
+        label: formatDay(day),
+        confidence: totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) / 100 : 0,
+      }));
+  }, [data]);
+
   if (data.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
@@ -18,22 +43,6 @@ export function ConfidenceTrendChart({ data }: ConfidenceTrendChartProps) {
       </div>
     );
   }
-
-  // Aggregate by day: weighted average of avgConfidence across all strategies
-  const byDay = new Map<string, { totalWeight: number; weightedSum: number }>();
-  for (const row of data) {
-    const existing = byDay.get(row.day) ?? { totalWeight: 0, weightedSum: 0 };
-    existing.totalWeight += row.totalDecisions;
-    existing.weightedSum += row.avgConfidence * row.totalDecisions;
-    byDay.set(row.day, existing);
-  }
-
-  const chartData = Array.from(byDay.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, { totalWeight, weightedSum }]) => ({
-      label: formatDay(day),
-      confidence: totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 100) / 100 : 0,
-    }));
 
   return (
     <ResponsiveContainer width="100%" height={260}>
@@ -55,7 +64,11 @@ export function ConfidenceTrendChart({ data }: ConfidenceTrendChartProps) {
             background: "hsl(var(--popover))",
             color: "hsl(var(--popover-foreground))",
           }}
-          formatter={(value: number) => [value.toFixed(3), "Avg confidence"]}
+          formatter={(value) =>
+            typeof value === "number"
+              ? [value.toFixed(3), "Avg confidence"]
+              : [String(value), "Avg confidence"]
+          }
         />
         <Line
           type="monotone"
