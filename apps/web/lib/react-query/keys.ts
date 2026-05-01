@@ -13,6 +13,11 @@ export const qk = {
     logs: (id: string, executionId?: string) => ["runs", id, "logs", executionId ?? null] as const,
     decisions: (id: string) => ["runs", id, "decisions"] as const,
   },
+  schedules: {
+    all: () => ["schedules"] as const,
+    list: () => ["schedules", "list"] as const,
+    detail: (id: string) => ["schedules", "detail", id] as const,
+  },
   settings: { detail: () => ["settings"] as const },
   notifications: {
     preferences: () => ["notifications", "preferences"] as const,

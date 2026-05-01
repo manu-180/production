@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   ActivityIcon,
   BarChart2Icon,
+  CalendarClockIcon,
   FileTextIcon,
   HomeIcon,
   LayersIcon,
@@ -44,6 +45,12 @@ const NAV: NavItem[] = [
     label: "Plans",
     icon: FileTextIcon,
     match: (p) => p.startsWith("/dashboard/plans"),
+  },
+  {
+    href: "/dashboard/schedule",
+    label: "Schedules",
+    icon: CalendarClockIcon,
+    match: (p) => p.startsWith("/dashboard/schedule"),
   },
   {
     href: "/dashboard/templates",

@@ -49,6 +49,10 @@ export type NotificationPreferenceInsert =
 export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
 export type IntegrationInsert = Database["public"]["Tables"]["integrations"]["Insert"];
 
+export type Schedule = Database["public"]["Tables"]["schedules"]["Row"];
+export type ScheduleInsert = Database["public"]["Tables"]["schedules"]["Insert"];
+export type ScheduleUpdate = Database["public"]["Tables"]["schedules"]["Update"];
+
 // ─── Run status literals ──────────────────────────────────────────────────────
 export type RunStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled";
 

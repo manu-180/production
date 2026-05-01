@@ -162,6 +162,68 @@ export type Database = {
         };
         Relationships: [];
       };
+      schedules: {
+        Row: {
+          cron_expression: string;
+          created_at: string;
+          enabled: boolean;
+          id: string;
+          last_run_at: string | null;
+          name: string;
+          next_run_at: string | null;
+          plan_id: string;
+          quiet_hours_end: number | null;
+          quiet_hours_start: number | null;
+          skip_if_recent_hours: number | null;
+          skip_if_running: boolean;
+          updated_at: string;
+          user_id: string;
+          working_dir: string | null;
+        };
+        Insert: {
+          cron_expression: string;
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          last_run_at?: string | null;
+          name: string;
+          next_run_at?: string | null;
+          plan_id: string;
+          quiet_hours_end?: number | null;
+          quiet_hours_start?: number | null;
+          skip_if_recent_hours?: number | null;
+          skip_if_running?: boolean;
+          updated_at?: string;
+          user_id: string;
+          working_dir?: string | null;
+        };
+        Update: {
+          cron_expression?: string;
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          last_run_at?: string | null;
+          name?: string;
+          next_run_at?: string | null;
+          plan_id?: string;
+          quiet_hours_end?: number | null;
+          quiet_hours_start?: number | null;
+          skip_if_recent_hours?: number | null;
+          skip_if_running?: boolean;
+          updated_at?: string;
+          user_id?: string;
+          working_dir?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "schedules_plan_id_fkey";
+            columns: ["plan_id"];
+            isOneToOne: false;
+            referencedRelation: "plans";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       prompt_executions: {
         Row: {
           attempt: number;
