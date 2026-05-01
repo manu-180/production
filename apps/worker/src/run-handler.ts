@@ -13,6 +13,7 @@
  */
 
 import {
+  AuditLogger,
   ConcreteCheckpointManager,
   type DbClient,
   GitManager,
@@ -25,10 +26,10 @@ import {
   type RunResult,
   loadPlanFromDb,
 } from "@conductor/core";
+import type { HealthMonitor } from "@conductor/core";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import type { Logger } from "pino";
 import { createHeartbeat } from "./heartbeat.js";
-import type { HealthMonitor } from "@conductor/core";
 
 export interface RunHandlerOptions {
   runId: string;
@@ -351,6 +352,25 @@ export class RunHandler {
       }
     } catch (err) {
       this.logger.error({ err, runId: this._runId }, "failed to write terminal run status (threw)");
+    }
+
+    const audit = new AuditLogger(db);
+    if (status === "completed") {
+      void audit.log({
+        actor: "worker",
+        action: "run.completed",
+        resourceType: "run",
+        resourceId: this._runId,
+        metadata: { status },
+      });
+    } else {
+      void audit.log({
+        actor: "worker",
+        action: "run.failed",
+        resourceType: "run",
+        resourceId: this._runId,
+        metadata: { status },
+      });
     }
   }
 

@@ -12,6 +12,12 @@ import { generalLimiter, mutationLimiter } from "@/lib/api/rate-limit";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Prevent createServiceClient from throwing in test env (no Supabase env vars).
+vi.mock("@conductor/db", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@conductor/db")>();
+  return { ...mod, createServiceClient: vi.fn(() => ({ from: vi.fn() })) };
+});
+
 import { POST as TRIGGER } from "../../plans/[id]/runs/route";
 import { POST as APPROVE } from "../[id]/approve-prompt/route";
 import { POST as CANCEL } from "../[id]/cancel/route";

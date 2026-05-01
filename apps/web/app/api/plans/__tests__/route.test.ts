@@ -3,6 +3,12 @@ import * as authModule from "@/lib/api/auth";
 import { generalLimiter, mutationLimiter } from "@/lib/api/rate-limit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Prevent createServiceClient from throwing in test env (no Supabase env vars).
+vi.mock("@conductor/db", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@conductor/db")>();
+  return { ...mod, createServiceClient: vi.fn(() => ({ from: vi.fn() })) };
+});
+
 import { NextRequest } from "next/server";
 
 import { GET, POST } from "../route";

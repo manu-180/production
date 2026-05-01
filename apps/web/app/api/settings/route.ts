@@ -1,5 +1,7 @@
 import { defineRoute, respond, respondError } from "@/lib/api";
 import { type SettingsUpdate, settingsUpdateSchema } from "@/lib/validators/settings";
+import { AuditLogger, type DbClient } from "@conductor/core";
+import { createServiceClient } from "@conductor/db";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +94,16 @@ export const PATCH = defineRoute<SettingsUpdate>(
       });
     }
 
+    const svc = createServiceClient();
+    const audit = new AuditLogger(svc as unknown as DbClient);
+    void audit.log({
+      actor: "user",
+      action: "settings.updated",
+      userId: user.userId,
+      resourceType: "settings",
+      resourceId: user.userId,
+      metadata: { changed: Object.keys(body) },
+    });
     return respond(data, { traceId });
   },
 );

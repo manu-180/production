@@ -1,6 +1,8 @@
 import { defineRoute, respond, respondError } from "@/lib/api";
 import { assertPlanOwned } from "@/lib/api/prompt-utils";
 import { type RunTrigger, runTriggerSchema } from "@/lib/validators/runs";
+import { AuditLogger, type DbClient } from "@conductor/core";
+import { createServiceClient } from "@conductor/db";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +101,16 @@ export const POST = defineRoute<RunTrigger, undefined, Params>(
     });
 
     const { data: run } = await user.db.from("runs").select("*").eq("id", runId).maybeSingle();
+    const svc = createServiceClient();
+    const audit = new AuditLogger(svc as unknown as DbClient);
+    void audit.log({
+      actor: "user",
+      action: "run.launched",
+      userId: user.userId,
+      resourceType: "run",
+      resourceId: runId,
+      metadata: { planId: plan.id, workingDir: body.workingDir },
+    });
     return respond(run ?? { id: runId }, { status: 201, traceId });
   },
 );

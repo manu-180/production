@@ -1,5 +1,11 @@
 import { defineRoute, respond, respondError, respondNoContent } from "@/lib/api";
-import { createProductionTokenManager, validateToken } from "@conductor/core";
+import {
+  AuditLogger,
+  type DbClient,
+  createProductionTokenManager,
+  validateToken,
+} from "@conductor/core";
+import { createServiceClient } from "@conductor/db";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +37,15 @@ export const POST = defineRoute<TokenBody>(
     }
     const mgr = await createProductionTokenManager();
     await mgr.saveToken(DEV_USER_ID, body.token);
+    const svc = createServiceClient();
+    const audit = new AuditLogger(svc as unknown as DbClient);
+    void audit.log({
+      actor: "user",
+      action: "token.saved",
+      userId: DEV_USER_ID,
+      resourceType: "auth_token",
+      metadata: { provider: "claude" },
+    });
     return respond({ ok: true, validatedAt: new Date().toISOString() }, { traceId });
   },
 );
@@ -57,6 +72,15 @@ export const DELETE = defineRoute<undefined, undefined>(
   async ({ traceId }) => {
     const mgr = await createProductionTokenManager();
     await mgr.revokeToken(DEV_USER_ID);
+    const svc = createServiceClient();
+    const audit = new AuditLogger(svc as unknown as DbClient);
+    void audit.log({
+      actor: "user",
+      action: "token.revoked",
+      userId: DEV_USER_ID,
+      resourceType: "auth_token",
+      metadata: { provider: "claude" },
+    });
     return respondNoContent(traceId);
   },
 );
