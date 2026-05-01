@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { GuardianDecisionRow } from "@/lib/guardian";
 import { EyeIcon } from "lucide-react";
@@ -18,6 +19,7 @@ import { useState } from "react";
 
 interface Props {
   decision: GuardianDecisionRow;
+  runId: string;
 }
 
 const STRATEGY_LABELS: Record<GuardianDecisionRow["strategy"], string> = {
@@ -41,8 +43,31 @@ function formatTimestamp(iso: string): string {
   }
 }
 
-export function DecisionDetailDialog({ decision }: Props) {
+export function DecisionDetailDialog({ decision, runId }: Props) {
   const [open, setOpen] = useState(false);
+  const [overrideText, setOverrideText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [overridden, setOverridden] = useState(decision.overriddenByHuman);
+  const [savedResponse, setSavedResponse] = useState(decision.overrideResponse ?? "");
+
+  async function handleOverride() {
+    if (!overrideText.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/runs/${runId}/guardian/decisions/${decision.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrideResponse: overrideText.trim() }),
+      });
+      if (res.ok) {
+        setSavedResponse(overrideText.trim());
+        setOverridden(true);
+        setOverrideText("");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -67,7 +92,7 @@ export function DecisionDetailDialog({ decision }: Props) {
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <StrategyBadge strategy={decision.strategy} />
               <span>{Math.round(decision.confidence * 100)}% confidence</span>
-              {decision.overriddenByHuman && <Badge variant="outline">Human reviewed</Badge>}
+              {overridden && <Badge variant="outline">Human reviewed</Badge>}
               <span className="ml-auto font-mono">{formatTimestamp(decision.createdAt)}</span>
             </div>
 
@@ -91,11 +116,41 @@ export function DecisionDetailDialog({ decision }: Props) {
               {decision.reasoning || <em className="text-muted-foreground">—</em>}
             </DetailSection>
 
-            {decision.overrideResponse !== undefined && decision.overrideResponse !== "" && (
-              <DetailSection label="Human override response">
-                {decision.overrideResponse}
-              </DetailSection>
+            {savedResponse !== "" && (
+              <DetailSection label="Human override response">{savedResponse}</DetailSection>
             )}
+
+            {/* Override form */}
+            <div className="grid gap-2 border-t pt-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Override Guardian decision
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Submit your own answer to replace the Guardian&apos;s decision.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={overrideText}
+                  onChange={(e) => setOverrideText(e.target.value)}
+                  placeholder="Your decision…"
+                  disabled={submitting}
+                  className="flex-1 text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void handleOverride();
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  onClick={() => void handleOverride()}
+                  disabled={submitting || !overrideText.trim()}
+                >
+                  {submitting ? "Saving…" : "Override"}
+                </Button>
+              </div>
+            </div>
           </div>
         </ScrollArea>
 
