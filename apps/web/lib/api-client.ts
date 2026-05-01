@@ -77,6 +77,7 @@ export const apiClient = {
   get: <T>(path: string, opts?: RequestOpts) => request<T>("GET", path, undefined, opts),
   post: <T>(path: string, body?: unknown, opts?: RequestOpts) =>
     request<T>("POST", path, body, opts),
+  put: <T>(path: string, body?: unknown, opts?: RequestOpts) => request<T>("PUT", path, body, opts),
   patch: <T>(path: string, body?: unknown, opts?: RequestOpts) =>
     request<T>("PATCH", path, body, opts),
   delete: <T>(path: string, opts?: RequestOpts) => request<T>("DELETE", path, undefined, opts),

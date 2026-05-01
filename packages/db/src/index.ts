@@ -41,6 +41,14 @@ export type OutputChunkInsert = Database["public"]["Tables"]["output_chunks"]["I
 export type Settings = Database["public"]["Tables"]["settings"]["Row"];
 export type SettingsUpdate = Database["public"]["Tables"]["settings"]["Update"];
 
+export type NotificationPreference =
+  Database["public"]["Tables"]["notification_preferences"]["Row"];
+export type NotificationPreferenceInsert =
+  Database["public"]["Tables"]["notification_preferences"]["Insert"];
+
+export type Integration = Database["public"]["Tables"]["integrations"]["Row"];
+export type IntegrationInsert = Database["public"]["Tables"]["integrations"]["Insert"];
+
 // ─── Run status literals ──────────────────────────────────────────────────────
 export type RunStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled";
 

@@ -14,6 +14,10 @@ export const qk = {
     decisions: (id: string) => ["runs", id, "decisions"] as const,
   },
   settings: { detail: () => ["settings"] as const },
+  notifications: {
+    preferences: () => ["notifications", "preferences"] as const,
+    channels: () => ["notifications", "channels"] as const,
+  },
   system: { health: () => ["system", "health"] as const },
   kpis: () => ["dashboard", "kpis"] as const,
   insights: {
