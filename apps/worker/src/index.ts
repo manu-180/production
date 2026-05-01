@@ -20,6 +20,7 @@ import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { PgListener } from "./lib/pg-listen.js";
 import { RunHandler } from "./run-handler.js";
+import { startSchedulerTick } from "./scheduler-tick.js";
 import { runStartupRecovery } from "./startup-recovery.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,6 +152,12 @@ const listener = new PgListener({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Scheduler tick (populated at boot, referenced during shutdown)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let stopSchedulerTick: (() => void) | null = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Graceful shutdown
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -163,6 +170,7 @@ function gracefulShutdown(signal: string): void {
 
   const shutdown = async (): Promise<void> => {
     listener.stop();
+    stopSchedulerTick?.();
 
     for (const [runId, handler] of activeRuns) {
       handler.cancel(`worker shutdown: ${signal}`);
@@ -202,4 +210,12 @@ logger.info(
 }
 
 await listener.start();
+
+// Start the scheduler tick. A dedicated client is used so the scheduler's
+// Supabase calls are isolated from the run-polling client.
+{
+  const schedulerClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  stopSchedulerTick = startSchedulerTick(schedulerClient, logger);
+}
+
 logger.info("conductor worker ready");
