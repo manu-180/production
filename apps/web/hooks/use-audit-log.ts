@@ -3,10 +3,12 @@ import { apiClient } from "@/lib/api-client";
 import { qk } from "@/lib/react-query/keys";
 import { useQuery } from "@tanstack/react-query";
 
+export type AuditActor = "user" | "worker" | "guardian" | "system";
+
 export interface AuditLogEntry {
   id: number;
   user_id: string;
-  actor: "user" | "worker" | "guardian" | "system";
+  actor: AuditActor;
   action: string;
   resource_type: string | null;
   resource_id: string | null;
@@ -24,7 +26,7 @@ export interface AuditLogResponse {
 export interface AuditLogFilters {
   page?: number;
   limit?: number;
-  actor?: string;
+  actor?: AuditActor;
   action?: string;
   from?: string;
   to?: string;

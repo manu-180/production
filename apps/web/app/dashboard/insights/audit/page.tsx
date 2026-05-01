@@ -15,7 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { type AuditLogFilters, buildAuditExportUrl, useAuditLog } from "@/hooks/use-audit-log";
+import {
+  type AuditActor,
+  type AuditLogFilters,
+  buildAuditExportUrl,
+  useAuditLog,
+} from "@/hooks/use-audit-log";
 import { formatRelativeTime } from "@/lib/ui/format";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -76,7 +81,7 @@ function MetadataPreview({ metadata }: { metadata: Record<string, unknown> | nul
 
 export default function AuditLogPage() {
   const [page, setPage] = useState(0);
-  const [actor, setActor] = useState("");
+  const [actor, setActor] = useState<AuditActor | "">("");
   const [action, setAction] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -101,7 +106,7 @@ export default function AuditLogPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const exportUrl = buildAuditExportUrl({
-    actor,
+    ...(actor ? { actor } : {}),
     action,
     from,
     to,
@@ -187,7 +192,7 @@ export default function AuditLogPage() {
               className={SELECT_CLS}
               value={actor}
               onChange={(e) => {
-                setActor(e.target.value);
+                setActor(e.target.value as AuditActor | "");
                 resetPage();
               }}
               aria-label="Filter by actor"

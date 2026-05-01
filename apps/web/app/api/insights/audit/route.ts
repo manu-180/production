@@ -76,8 +76,10 @@ export const GET = defineRoute<undefined, AuditQuery>(
     if (resource_type !== undefined) dbQuery = dbQuery.eq("resource_type", resource_type);
 
     if (q !== undefined && q.trim().length > 0) {
-      // Strip chars that would break the PostgREST or() filter string
-      const safeQ = q.replace(/[(),]/g, "").trim();
+      // Whitelist-sanitize: keep only chars safe to embed in a PostgREST or() value.
+      // Commas/parens would break the filter-string grammar; other specials are
+      // harmless inside ilike values but stripping them avoids future surprises.
+      const safeQ = q.replace(/[^a-zA-Z0-9\s._-]/g, "").trim();
       if (safeQ.length > 0) {
         const pattern = `%${safeQ}%`;
         dbQuery = dbQuery.or(
@@ -99,12 +101,16 @@ export const GET = defineRoute<undefined, AuditQuery>(
 
     if (isCsv) {
       const csv = toCsv(rows, CSV_COLUMNS as unknown as (keyof Record<string, unknown>)[]);
+      const totalCount = (count as number | null) ?? 0;
       return new NextResponse(csv, {
         status: 200,
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
           "Content-Disposition": `attachment; filename="audit-log-${new Date().toISOString().slice(0, 10)}.csv"`,
           "x-trace-id": traceId,
+          // Let clients detect truncation when total > 1000
+          "x-total-count": String(totalCount),
+          "x-exported-count": String(rows.length),
         },
       });
     }
