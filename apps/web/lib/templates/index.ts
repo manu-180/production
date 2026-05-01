@@ -21,6 +21,7 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
     description:
       "Scaffold a full-stack MVP with Next.js 15 App Router, Supabase auth, and a basic CRUD feature. Produces a working, deployable application skeleton with authentication, a data model, and a UI.",
     tags: ["nextjs", "supabase", "mvp", "fullstack"],
+    iconName: "Globe",
     prompts: [
       {
         filename: "01-scaffold-project.md",
@@ -113,6 +114,7 @@ Verify the acceptance criteria: a logged-in user can create 3 items, edit one, d
     description:
       "Systematically improve an existing codebase: audit tech debt, apply safe refactors, and add a test suite without breaking existing behavior.",
     tags: ["refactor", "typescript", "testing"],
+    iconName: "Wrench",
     prompts: [
       {
         filename: "01-audit.md",
@@ -183,6 +185,7 @@ Verify the acceptance criteria: \`vitest run\` exits 0 and coverage for the targ
     description:
       "Design and implement a reusable component library with TypeScript, Tailwind, shadcn/ui, and Storybook documentation.",
     tags: ["components", "design-system", "storybook"],
+    iconName: "Layers",
     prompts: [
       {
         filename: "01-design-tokens.md",
@@ -253,6 +256,7 @@ Verify the acceptance criteria: \`storybook build\` exits 0 and opening the buil
     description:
       "Automatically generate a comprehensive test suite for an existing codebase: unit tests, integration tests, and end-to-end flows.",
     tags: ["testing", "vitest", "playwright"],
+    iconName: "TestTube2",
     prompts: [
       {
         filename: "01-unit-tests.md",
@@ -323,6 +327,7 @@ Verify the acceptance criteria: \`playwright test\` passes in headless mode acro
     description:
       "Generate comprehensive OpenAPI 3.1 documentation from existing route handlers and publish an interactive Swagger UI.",
     tags: ["docs", "openapi", "swagger"],
+    iconName: "Code2",
     prompts: [
       {
         filename: "01-generate-openapi.md",
@@ -373,6 +378,7 @@ Verify the acceptance criteria: the docs page renders all endpoints, the authori
     description:
       "Safely plan, execute, and verify a Supabase Postgres schema migration with zero downtime and full rollback capability.",
     tags: ["database", "migration", "supabase"],
+    iconName: "Plug",
     prompts: [
       {
         filename: "01-plan-migration.md",
@@ -435,8 +441,233 @@ Verify the acceptance criteria: all tests pass, \`supabase db diff\` reports a c
       },
     ],
   },
+
+  // ─── 7. Localization (i18n) ──────────────────────────────────────────────────
+  {
+    id: "localization-i18n",
+    name: "Set Up Internationalization (i18n)",
+    description:
+      "Extract all user-facing strings from the codebase and implement multi-language support with next-intl. Support English, Spanish, and Portuguese out of the box.",
+    tags: ["i18n", "localization", "nextjs"],
+    iconName: "Globe",
+    prompts: [
+      {
+        filename: "01-extract-strings.md",
+        title: "Extract Strings & Create Message Files",
+        content: `# Extract Strings & Create Message Files
+
+Scan the entire codebase for hardcoded user-facing strings in: React components, API error messages, validation errors, email templates, and toast notifications.
+Extract all strings into a flat JSON structure organized by feature/page in \`messages/en.json\`.
+Identify strings with dynamic values (names, counts, dates) and mark interpolation points with {variable} syntax following the ICU message format.
+Create translations for Spanish (\`messages/es.json\`) and Portuguese (\`messages/pt.json\`) by translating all strings from the English source.
+Verify the acceptance criteria: \`messages/en.json\`, \`messages/es.json\`, and \`messages/pt.json\` all exist with matching keys and no missing translations.`,
+        frontmatter: {
+          title: "Extract Strings & Create Message Files",
+          allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
+          permissionMode: "default",
+          maxTurns: 45,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["extraction", "i18n"],
+        },
+      },
+      {
+        filename: "02-setup-next-intl.md",
+        title: "Set Up next-intl Framework",
+        content: `# Set Up next-intl Framework
+
+Install and configure \`next-intl\` library in the Next.js 15 project.
+Create \`middleware.ts\` to detect user locale from Accept-Language header and URL prefix.
+Update \`next.config.ts\` with the next-intl plugin configuration and routing setup for \`/[locale]/\` prefix.
+Create \`app/[locale]/layout.tsx\` with NextIntlClientProvider and import the message files.
+Verify the acceptance criteria: \`next build\` succeeds, the middleware correctly redirects \`/en/\` and \`/es/\` requests, and no console errors appear.`,
+        frontmatter: {
+          title: "Set Up next-intl Framework",
+          allowedTools: ["Bash", "Read", "Write", "Edit"],
+          permissionMode: "default",
+          maxTurns: 35,
+          requiresApproval: false,
+          rollbackOnFail: true,
+          tags: ["setup", "nextjs"],
+          dependsOn: ["01-extract-strings.md"],
+        },
+      },
+      {
+        filename: "03-replace-hardcoded-strings.md",
+        title: "Replace Hardcoded Strings with Translations",
+        content: `# Replace Hardcoded Strings with Translations
+
+Replace all extracted hardcoded strings with calls to the \`useTranslations()\` hook in client components and \`getTranslations()\` in server components.
+Use the \`t()\` function to retrieve strings from the message files with proper TypeScript autocomplete.
+For pluralization, apply the ICU plural format in message files and use \`t(key, { count: n })\` in components.
+Run \`next build\` and verify no strings fall back to undefined translation keys.
+Verify the acceptance criteria: the app renders in English, Spanish, and Portuguese with all strings translated and no missing keys in the browser console.`,
+        frontmatter: {
+          title: "Replace Hardcoded Strings with Translations",
+          allowedTools: ["Read", "Edit", "Glob", "Grep"],
+          permissionMode: "default",
+          maxTurns: 70,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["refactoring", "translation"],
+          dependsOn: ["02-setup-next-intl.md"],
+        },
+      },
+      {
+        filename: "04-language-switcher.md",
+        title: "Build Language Switcher UI",
+        content: `# Build Language Switcher UI
+
+Add a language switcher dropdown to the app's main navigation or settings page that allows users to toggle between English, Spanish, and Portuguese.
+Store the selected locale in a cookie or user preference in the database (if authenticated).
+Update the middleware to respect stored user preference over Accept-Language header when available.
+Create a unit test verifying that switching language in the UI updates the \`next-intl\` active locale and re-renders content with correct translations.
+Verify the acceptance criteria: the switcher appears in the UI, clicking a language option changes the page language immediately, and the preference persists across page reloads.`,
+        frontmatter: {
+          title: "Build Language Switcher UI",
+          allowedTools: ["Read", "Write", "Edit"],
+          permissionMode: "default",
+          maxTurns: 40,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["ui", "ux"],
+          dependsOn: ["03-replace-hardcoded-strings.md"],
+        },
+      },
+    ],
+  },
+
+  // ─── 8. Performance Audit ────────────────────────────────────────────────────
+  {
+    id: "performance-audit",
+    name: "Performance Audit & Optimization",
+    description:
+      "Analyze bundle size, Core Web Vitals, and query performance. Implement optimizations including code splitting, image optimization, and database indexing.",
+    tags: ["performance", "optimization", "nextjs"],
+    iconName: "Zap",
+    prompts: [
+      {
+        filename: "01-analyze-bundle.md",
+        title: "Analyze Bundle Size & Chunks",
+        content: `# Analyze Bundle Size & Chunks
+
+Run \`next build\` with detailed output and use \`@next/bundle-analyzer\` to generate a bundle analysis report.
+Identify: the largest chunks (>100KB), duplicate dependencies, and Client Components that could be Server Components.
+Create a \`BUNDLE_ANALYSIS.md\` report listing each chunk, its size, and optimization recommendations.
+Flag any third-party libraries that could be replaced with lighter alternatives or removed entirely.
+Verify the acceptance criteria: \`BUNDLE_ANALYSIS.md\` exists, identifies the top 5 optimization opportunities, and includes before/after size estimates.`,
+        frontmatter: {
+          title: "Analyze Bundle Size & Chunks",
+          allowedTools: ["Bash", "Read", "Write"],
+          permissionMode: "default",
+          maxTurns: 25,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["analysis"],
+        },
+      },
+      {
+        filename: "02-optimize-bundle.md",
+        title: "Optimize Bundle Size",
+        content: `# Optimize Bundle Size
+
+Implement the top 3 bundle size optimizations identified in the analysis:
+1. Convert Client Components to Server Components where state/interactivity is not required.
+2. Add dynamic imports with \`React.lazy()\` for route-specific or heavy UI components.
+3. Replace or remove oversized third-party dependencies identified in the report.
+Re-run \`next build\` after each change and measure the total JavaScript size reduction.
+Verify the acceptance criteria: the bundle size decreases by at least 15%, \`next build\` succeeds, and the app functions correctly in production.`,
+        frontmatter: {
+          title: "Optimize Bundle Size",
+          allowedTools: ["Bash", "Read", "Edit", "Write"],
+          permissionMode: "default",
+          maxTurns: 50,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["optimization", "bundling"],
+          dependsOn: ["01-analyze-bundle.md"],
+        },
+      },
+      {
+        filename: "03-optimize-images-fonts.md",
+        title: "Optimize Images & Fonts",
+        content: `# Optimize Images & Fonts
+
+Replace all \`<img>\` tags with Next.js \`<Image>\` component, specifying explicit \`width\` and \`height\` attributes to prevent layout shift (CLS).
+Set \`priority\` prop for above-the-fold images and add \`blurDataURL\` placeholders for a better perceived load time.
+Replace all font imports with \`next/font\` (Google Fonts or local fonts) to eliminate font load blocking and reduce CLS.
+Verify the acceptance criteria: run \`lighthouse\` against the local dev server and confirm CLS < 0.1, LCP < 2.5s, and no font-related layout shift warnings.`,
+        frontmatter: {
+          title: "Optimize Images & Fonts",
+          allowedTools: ["Read", "Edit", "Bash"],
+          permissionMode: "default",
+          maxTurns: 45,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["images", "fonts", "cwv"],
+          dependsOn: ["02-optimize-bundle.md"],
+        },
+      },
+      {
+        filename: "04-database-optimization.md",
+        title: "Optimize Database Queries",
+        content: `# Optimize Database Queries
+
+Enable query logging in Supabase and scan the logs for: N+1 queries, missing indexes on frequently filtered/joined columns, and unoptimized WHERE clauses.
+Write a migration to add missing indexes on foreign key columns and high-cardinality filter columns (status, created_at, user_id).
+Refactor API routes and Server Components to eliminate N+1 patterns by using SQL joins or batch fetches instead of loops with individual queries.
+Run the full test suite to verify query changes do not affect application behavior.
+Verify the acceptance criteria: average API response time decreases by at least 20%, new indexes are created, and no N+1 patterns remain in the code.`,
+        frontmatter: {
+          title: "Optimize Database Queries",
+          allowedTools: ["Bash", "Read", "Write", "Edit"],
+          permissionMode: "default",
+          maxTurns: 40,
+          requiresApproval: false,
+          rollbackOnFail: true,
+          tags: ["database", "queries"],
+          dependsOn: ["03-optimize-images-fonts.md"],
+        },
+      },
+      {
+        filename: "05-monitoring-setup.md",
+        title: "Set Up Performance Monitoring",
+        content: `# Set Up Performance Monitoring
+
+Install \`next-safe-action\` or the \`web-vitals\` package to collect Core Web Vitals metrics (LCP, FID, CLS, TTFB) from real users in production.
+Send metrics to your analytics provider (Google Analytics 4) or a custom endpoint for tracking.
+Create a performance dashboard at \`app/(docs)/performance/page.tsx\` that displays baseline metrics and historical trends.
+Add a performance budget in \`next.config.ts\` that fails the build if the main bundle exceeds a configurable size threshold (e.g., 300KB gzipped).
+Verify the acceptance criteria: metrics are being recorded and sent to analytics, the performance dashboard renders historical data, and the build fails when the performance budget is exceeded.`,
+        frontmatter: {
+          title: "Set Up Performance Monitoring",
+          allowedTools: ["Read", "Write", "Edit", "Bash"],
+          permissionMode: "default",
+          maxTurns: 40,
+          requiresApproval: false,
+          rollbackOnFail: false,
+          tags: ["monitoring", "analytics"],
+          dependsOn: ["04-database-optimization.md"],
+        },
+      },
+    ],
+  },
 ];
 
 export function getTemplateById(id: string): BuiltinTemplate | undefined {
   return BUILTIN_TEMPLATES.find((t) => t.id === id);
+}
+
+export function getTemplatesByTag(tag: string): BuiltinTemplate[] {
+  return BUILTIN_TEMPLATES.filter((t) => t.tags.includes(tag));
+}
+
+export function searchTemplates(query: string): BuiltinTemplate[] {
+  const lowerQuery = query.toLowerCase();
+  return BUILTIN_TEMPLATES.filter(
+    (t) =>
+      t.name.toLowerCase().includes(lowerQuery) ||
+      t.description.toLowerCase().includes(lowerQuery) ||
+      t.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)),
+  );
 }
