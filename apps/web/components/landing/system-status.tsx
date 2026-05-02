@@ -16,12 +16,15 @@ async function checkSupabase(): Promise<StatusResult> {
 
   try {
     const res = await fetch(`${url}/rest/v1/`, {
-      headers: { apikey: key },
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
       next: { revalidate: 30 },
     });
+    // Any HTTP response means the server is reachable (401 = up but needs auth,
+    // which is expected for an unauthenticated health-check against a secured project).
+    const reachable = res.status < 500;
     return {
-      label: res.ok ? "Supabase conectado" : "Supabase inaccesible",
-      ok: res.ok,
+      label: reachable ? "Supabase conectado" : "Supabase inaccesible",
+      ok: reachable,
     };
   } catch {
     return { label: "Supabase inaccesible", ok: false };
