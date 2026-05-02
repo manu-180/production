@@ -1,0 +1,55 @@
+# Worker service Dockerfile
+# Note: claude CLI must be installed via bind mount or PATH at runtime, NOT baked into image.
+# This keeps the image size minimal and avoids baking credentials into the image.
+
+FROM node:20-bookworm-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install pnpm globally
+RUN npm install -g pnpm@10.33.0
+
+WORKDIR /app
+
+# Copy workspace configuration files
+COPY pnpm-workspace.yaml .
+COPY pnpm-lock.yaml .
+COPY package.json .
+
+# Copy all package.json files for workspace packages
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+
+# Install dependencies with frozen lockfile
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY apps/worker ./apps/worker
+COPY packages/core ./packages/core
+COPY packages/db ./packages/db
+COPY tsconfig.base.json .
+COPY turbo.json .
+
+# Build worker
+RUN pnpm --filter @conductor/worker build
+
+# Create non-root user for security
+RUN useradd -m -u 1001 conductor && \
+    chown -R conductor:conductor /app
+
+# Switch to non-root user
+USER conductor
+
+# Health check: verify process can start and respond
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD test -f /proc/$$/status || exit 1
+
+# Start worker
+CMD ["node", "apps/worker/dist/index.js"]

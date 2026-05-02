@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Next.js web application
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: conductor-web
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    env_file:
+      - .env
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/system/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - conductor-network
+    # Optional: mount .env in production if secrets aren't in compose
+    # volumes:
+    #   - /run/secrets/env:/app/.env:ro
+
+  # Node.js worker service
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: conductor-worker
+    environment:
+      NODE_ENV: production
+    env_file:
+      - .env
+    volumes:
+      # Working directory for Claude SDK operations
+      - ${HOST_WORKING_DIRS_ROOT:-./working_dirs}:/working_dirs
+      # Claude config and credentials mounted at runtime
+      - claude_config:/home/conductor/.claude
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -q '[n]ode apps/worker' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - conductor-network
+
+  # PostgreSQL database for Supabase
+  supabase-db:
+    image: supabase/postgres:15.1.0.117
+    container_name: conductor-db
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+    volumes:
+      # Persistent data
+      - pg_data:/var/lib/postgresql/data
+      # Initialize database with migrations
+      - ./supabase/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - conductor-network
+
+  # Nginx reverse proxy (optional, uncomment to use)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: conductor-nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - web
+  #   restart: unless-stopped
+  #   networks:
+  #     - conductor-network
+
+volumes:
+  pg_data:
+    driver: local
+  claude_config:
+    driver: local
+
+networks:
+  conductor-network:
+    driver: bridge

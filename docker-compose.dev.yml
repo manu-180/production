@@ -1,0 +1,68 @@
+version: '3.8'
+
+# Development overrides for docker-compose.yml
+# Run with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  web:
+    # Rebuild on every up (development mode)
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    environment:
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "0"
+    # Hot reload: mount source code
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
+      - ./apps/web/next.config.ts:/app/apps/web/next.config.ts
+      - ./packages/core/src:/app/packages/core/src
+      - ./packages/db/src:/app/packages/db/src
+    # Development: keep container running even if it fails
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    # Hot reload: mount source code for watch mode
+    volumes:
+      - ./apps/worker/src:/app/apps/worker/src
+      - ./packages/core/src:/app/packages/core/src
+      - ./packages/db/src:/app/packages/db/src
+      - ${HOST_WORKING_DIRS_ROOT:-./working_dirs}:/working_dirs
+      - claude_config:/home/conductor/.claude
+    # Development: keep container running even if it fails
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+  supabase-db:
+    # Keep development database on restart
+    restart: unless-stopped
+
+  # Supabase Studio: local database UI
+  studio:
+    image: supabase/studio:latest
+    container_name: conductor-studio
+    ports:
+      - "3030:3000"
+    environment:
+      SUPABASE_URL: http://supabase-db:5432
+      SUPABASE_REST_URL: http://web:3000
+      SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - conductor-network
+    # Studio is for development only, access at http://localhost:3030
+    # Default credentials: admin@example.com / password
