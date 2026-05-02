@@ -1,24 +1,12 @@
 "use client";
-import { ListFilterIcon, SearchIcon } from "lucide-react";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { type RunStatus, runStatusInfo } from "@/lib/ui/status";
+import { ListFilterIcon, SearchIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-const STATUSES: RunStatus[] = [
-  "queued",
-  "running",
-  "paused",
-  "completed",
-  "failed",
-  "cancelled",
-];
+const STATUSES: RunStatus[] = ["queued", "running", "paused", "completed", "failed", "cancelled"];
 
 export interface RunsFilters {
   status?: RunStatus;
@@ -34,14 +22,21 @@ export function RunsFilterBar({
 }) {
   const [search, setSearch] = useState(value.search ?? "");
 
+  // Keep stable refs to avoid stale closures in the debounce effect.
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
+
   useEffect(() => {
     const handle = setTimeout(() => {
-      if (search !== (value.search ?? "")) {
-        onChange({ ...value, search: search || undefined });
+      if (search !== (valueRef.current.search ?? "")) {
+        onChangeRef.current({ ...valueRef.current, search: search || undefined });
       }
     }, 300);
     return () => clearTimeout(handle);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: only react to local search changes
   }, [search]);
 
   return (
@@ -51,9 +46,9 @@ export function RunsFilterBar({
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by id or working dir…"
+          placeholder="Buscar por id o directorio…"
           className="pl-8"
-          aria-label="Search runs"
+          aria-label="Buscar ejecuciones"
         />
       </div>
 
@@ -62,7 +57,7 @@ export function RunsFilterBar({
           render={
             <Button variant="outline" size="sm" className="gap-1.5">
               <ListFilterIcon className="size-3.5" />
-              {value.status ? `Status: ${runStatusInfo(value.status).label}` : "All statuses"}
+              {value.status ? `Estado: ${runStatusInfo(value.status).label}` : "Todos los estados"}
             </Button>
           }
         />
@@ -72,7 +67,7 @@ export function RunsFilterBar({
             className="flex w-full items-center rounded-md px-2 py-1.5 text-sm hover:bg-muted"
             onClick={() => onChange({ ...value, status: undefined })}
           >
-            All statuses
+            Todos los estados
           </button>
           {STATUSES.map((s) => {
             const info = runStatusInfo(s);
@@ -84,9 +79,7 @@ export function RunsFilterBar({
                 onClick={() => onChange({ ...value, status: s })}
               >
                 <span>{info.label}</span>
-                {value.status === s && (
-                  <span className="text-xs text-primary">●</span>
-                )}
+                {value.status === s && <span className="text-xs text-primary">●</span>}
               </button>
             );
           })}
@@ -102,7 +95,7 @@ export function RunsFilterBar({
             onChange({});
           }}
         >
-          Clear
+          Limpiar
         </Button>
       )}
     </div>

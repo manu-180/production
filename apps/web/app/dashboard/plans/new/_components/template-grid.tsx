@@ -56,13 +56,13 @@ export function TemplateGrid({ templates, selectedId, onSelect }: TemplateGridPr
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-8 text-center">
         <LayersIcon className="size-8 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm text-muted-foreground">No templates available</p>
+        <p className="text-sm text-muted-foreground">No hay plantillas disponibles</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Select a template">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Seleccionar una plantilla">
       {templates.map((template) => {
         const Icon = getTemplateIcon(template);
         const isSelected = selectedId === template.id;

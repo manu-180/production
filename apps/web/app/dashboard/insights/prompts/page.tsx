@@ -202,29 +202,32 @@ export default function PromptsInsightsPage() {
     <div className="mx-auto max-w-7xl flex flex-col gap-6 pb-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Prompt Analytics</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            Analíticas de Prompts
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Performance stats per prompt across all runs.
+            Estadísticas de rendimiento por prompt en todas las ejecuciones.
           </p>
         </div>
       </div>
 
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load prompt data. Refresh to try again.
+          No se pudieron cargar los datos de prompts. Actualizá la página para intentar de nuevo.
         </div>
       )}
 
       {!isLoading && problematicCount > 0 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-          ⚠ {problematicCount} prompt{problematicCount !== 1 ? "s" : ""} have success rate below 80%
-          and may need attention.
+          ⚠ {problematicCount} prompt{problematicCount !== 1 ? "s" : ""} tiene
+          {problematicCount !== 1 ? "n" : ""} una tasa de éxito inferior al 80% y puede
+          {problematicCount !== 1 ? "n" : ""} requerir atención.
         </div>
       )}
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">All prompts</CardTitle>
+          <CardTitle className="text-base font-medium">Todos los prompts</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -236,7 +239,7 @@ export default function PromptsInsightsPage() {
             </div>
           ) : allPrompts.length === 0 ? (
             <div className="py-10 text-center text-sm text-muted-foreground">
-              No prompt data found.
+              No se encontraron datos de prompts.
             </div>
           ) : (
             <Table>
@@ -246,31 +249,31 @@ export default function PromptsInsightsPage() {
                   <SortableHeader column="plan" label="Plan" sort={sort} onSort={handleSort} />
                   <SortableHeader
                     column="totalExecutions"
-                    label="Executions"
+                    label="Ejecuciones"
                     sort={sort}
                     onSort={handleSort}
                   />
                   <SortableHeader
                     column="successRate"
-                    label="Success rate"
+                    label="Tasa de éxito"
                     sort={sort}
                     onSort={handleSort}
                   />
                   <SortableHeader
                     column="avgDurationMs"
-                    label="Avg duration"
+                    label="Duración promedio"
                     sort={sort}
                     onSort={handleSort}
                   />
                   <SortableHeader
                     column="avgCostUsd"
-                    label="Avg cost"
+                    label="Costo promedio"
                     sort={sort}
                     onSort={handleSort}
                   />
                   <SortableHeader
                     column="avgTokens"
-                    label="Avg tokens"
+                    label="Tokens promedio"
                     sort={sort}
                     onSort={handleSort}
                   />

@@ -1,33 +1,33 @@
 "use client";
-import { ArrowLeftIcon, CopyIcon } from "lucide-react";
-import Link from "next/link";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { RunDetailCache } from "@/lib/realtime/event-handlers";
 import type { RunStatus } from "@/lib/ui/status";
+import { ArrowLeftIcon, CopyIcon } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
 import { RunStatusBadge } from "../../_components/run-status-badge";
 import { ControlButtons } from "./control-buttons";
 import { RunDuration } from "./run-duration";
 
 export function RunHeader({ run }: { run: RunDetailCache }) {
   const status = run.status as RunStatus;
-  const planName = run.plan?.name ?? "Untitled plan";
+  const planName = run.plan?.name ?? "Plan sin título";
 
   async function copyId() {
     try {
       await navigator.clipboard.writeText(run.id);
-      toast.success("Run ID copied");
+      toast.success("ID de ejecución copiado");
     } catch {
-      toast.error("Could not copy");
+      toast.error("No se pudo copiar");
     }
   }
 
   async function copyDir() {
     try {
       await navigator.clipboard.writeText(run.working_dir);
-      toast.success("Working dir copied");
+      toast.success("Directorio de trabajo copiado");
     } catch {
-      toast.error("Could not copy");
+      toast.error("No se pudo copiar");
     }
   }
 
@@ -40,7 +40,7 @@ export function RunHeader({ run }: { run: RunDetailCache }) {
           render={<Link href="/dashboard/runs" />}
           className="-ml-2 gap-1.5"
         >
-          <ArrowLeftIcon className="size-3.5" /> Back to runs
+          <ArrowLeftIcon className="size-3.5" /> Volver a ejecuciones
         </Button>
       </div>
 
@@ -58,7 +58,7 @@ export function RunHeader({ run }: { run: RunDetailCache }) {
               type="button"
               onClick={copyId}
               className="group inline-flex items-center gap-1 font-mono hover:text-foreground"
-              aria-label="Copy run id"
+              aria-label="Copiar id de ejecución"
             >
               {run.id.slice(0, 8)}…
               <CopyIcon className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -76,7 +76,7 @@ export function RunHeader({ run }: { run: RunDetailCache }) {
               type="button"
               onClick={copyDir}
               className="group inline-flex max-w-[420px] items-center gap-1 truncate hover:text-foreground"
-              aria-label="Copy working directory"
+              aria-label="Copiar directorio de trabajo"
             >
               <span className="truncate">{run.working_dir}</span>
               <CopyIcon className="size-3 opacity-0 transition-opacity group-hover:opacity-100" />

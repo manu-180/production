@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/dashboard/insights", label: "Overview", exact: true },
-  { href: "/dashboard/insights/runs", label: "Runs", exact: false },
+  { href: "/dashboard/insights", label: "Resumen", exact: true },
+  { href: "/dashboard/insights/runs", label: "Ejecuciones", exact: false },
   { href: "/dashboard/insights/prompts", label: "Prompts", exact: false },
-  { href: "/dashboard/insights/guardian", label: "Guardian", exact: false },
-  { href: "/dashboard/insights/audit", label: "Audit Log", exact: false },
+  { href: "/dashboard/insights/guardian", label: "Guardián", exact: false },
+  { href: "/dashboard/insights/audit", label: "Auditoría", exact: false },
 ];
 
 export function InsightsTabs() {

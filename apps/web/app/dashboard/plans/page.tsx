@@ -66,10 +66,10 @@ export default function PlansPage() {
     (planId: string) => {
       deletePlan.mutate(planId, {
         onSuccess: () => {
-          toast.success("Plan deleted");
+          toast.success("Plan eliminado");
         },
         onError: (err) => {
-          toast.error(err.message || "Failed to delete plan");
+          toast.error(err.message || "Error al eliminar el plan");
         },
       });
     },
@@ -102,12 +102,14 @@ export default function PlansPage() {
       {/* Page header */}
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Plans</h1>
-          <p className="text-sm text-muted-foreground">Manage your prompt plans and sequences.</p>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Planes</h1>
+          <p className="text-sm text-muted-foreground">
+            Administrá tus planes de prompts y secuencias.
+          </p>
         </div>
-        <Button render={<Link href="/dashboard/plans/new" aria-label="Create a new plan" />}>
+        <Button render={<Link href="/dashboard/plans/new" aria-label="Crear un nuevo plan" />}>
           <PlusIcon aria-hidden="true" />
-          New Plan
+          Nuevo Plan
         </Button>
       </header>
 
@@ -126,13 +128,13 @@ export default function PlansPage() {
       {/* Error state */}
       {query.isError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Failed to load plans.{" "}
+          Error al cargar los planes.{" "}
           <button
             type="button"
             onClick={() => query.refetch()}
             className="underline underline-offset-2 hover:no-underline"
           >
-            Try again
+            Intentar de nuevo
           </button>
         </div>
       )}
@@ -141,7 +143,7 @@ export default function PlansPage() {
       {isInitialLoading && (
         <div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Loading plans"
+          aria-label="Cargando planes"
           aria-busy="true"
         >
           {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
@@ -155,14 +157,14 @@ export default function PlansPage() {
       {isEmpty && (
         <EmptyState
           type="plans"
-          description="Create your first plan to start orchestrating prompts."
-          action={{ label: "Create Plan", href: "/dashboard/plans/new" }}
+          description="Creá tu primer plan para empezar a orquestar prompts."
+          action={{ label: "Crear Plan", href: "/dashboard/plans/new" }}
         />
       )}
 
       {/* Plans grid */}
       {!isInitialLoading && sortedPlans.length > 0 && (
-        <section aria-label="Your plans">
+        <section aria-label="Tus planes">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sortedPlans.map((plan) => (
               <PlanCard key={plan.id} plan={plan} onDelete={() => handleDelete(plan.id)} />
@@ -175,7 +177,7 @@ export default function PlansPage() {
       {query.isFetchingNextPage && (
         <div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Loading more plans"
+          aria-label="Cargando más planes"
           aria-busy="true"
         >
           {Array.from({ length: 3 }).map((_, i) => (
@@ -190,35 +192,35 @@ export default function PlansPage() {
 
       {/* Templates section link */}
       <Separator />
-      <section aria-label="Templates" className="flex flex-col gap-4">
+      <section aria-label="Plantillas" className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-heading text-lg font-semibold tracking-tight">Templates</h2>
+            <h2 className="font-heading text-lg font-semibold tracking-tight">Plantillas</h2>
             <p className="text-sm text-muted-foreground">
-              Start from a pre-built template or browse built-in starters.
+              Comenzá desde una plantilla prediseñada o explorá los iniciadores.
             </p>
           </div>
           <Button
             variant="outline"
             size="sm"
-            render={<Link href="/dashboard/templates" aria-label="Browse all templates" />}
+            render={<Link href="/dashboard/templates" aria-label="Explorar todas las plantillas" />}
           >
             <LayersIcon aria-hidden="true" />
-            Browse templates
+            Explorar plantillas
           </Button>
         </div>
         <div className="rounded-xl border border-dashed border-border px-6 py-8 text-center">
           <LayersIcon className="mx-auto mb-3 size-8 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">
-            Use built-in templates or save any plan as a template for your team.
+            Usá plantillas integradas o guardá cualquier plan como plantilla para tu equipo.
           </p>
           <div className="mt-4 flex justify-center gap-3">
             <Button variant="secondary" size="sm" render={<Link href="/dashboard/templates" />}>
-              View all templates
+              Ver todas las plantillas
             </Button>
             <Button variant="outline" size="sm" render={<Link href="/dashboard/plans/new" />}>
               <PlusIcon aria-hidden="true" />
-              New from template
+              Nuevo desde plantilla
             </Button>
           </div>
         </div>

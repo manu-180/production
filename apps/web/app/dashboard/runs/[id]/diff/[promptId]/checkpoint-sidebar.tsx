@@ -27,7 +27,7 @@ export function CheckpointSidebar({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Checkpoints</CardTitle>
+        <CardTitle className="text-sm">Puntos de control</CardTitle>
       </CardHeader>
       <CardContent className="space-y-1">
         {checkpoints.map((cp) => {

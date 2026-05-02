@@ -26,10 +26,7 @@ function StatusDot({ label, tone }: DotProps) {
             aria-label={label}
             className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
           >
-            <span
-              aria-hidden="true"
-              className={cn("inline-block size-1.5 rounded-full", color)}
-            />
+            <span aria-hidden="true" className={cn("inline-block size-1.5 rounded-full", color)} />
             <span>{label}</span>
           </button>
         }
@@ -54,7 +51,7 @@ export function SystemStatusIndicator() {
   return (
     <div className="flex items-center gap-3 px-2">
       <StatusDot label="Worker" tone={workerTone} />
-      <StatusDot label="DB" tone={dbTone} />
+      <StatusDot label="BD" tone={dbTone} />
     </div>
   );
 }

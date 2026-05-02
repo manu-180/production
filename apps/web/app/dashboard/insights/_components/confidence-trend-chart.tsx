@@ -39,7 +39,7 @@ export function ConfidenceTrendChart({ data }: ConfidenceTrendChartProps) {
   if (data.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        No data yet
+        Sin datos todavía
       </div>
     );
   }
@@ -66,14 +66,14 @@ export function ConfidenceTrendChart({ data }: ConfidenceTrendChartProps) {
           }}
           formatter={(value) =>
             typeof value === "number"
-              ? [value.toFixed(3), "Avg confidence"]
-              : [String(value), "Avg confidence"]
+              ? [value.toFixed(3), "Confianza promedio"]
+              : [String(value), "Confianza promedio"]
           }
         />
         <Line
           type="monotone"
           dataKey="confidence"
-          name="Avg confidence"
+          name="Confianza promedio"
           stroke="#10b981"
           strokeWidth={2}
           dot={false}

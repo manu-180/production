@@ -68,12 +68,13 @@ const PROVIDERS: ProviderMeta[] = [
   {
     provider: "github",
     label: "GitHub",
-    description: "Connect GitHub to create pull requests and issues from run results.",
+    description:
+      "Conectá GitHub para crear pull requests e issues a partir de los resultados de las ejecuciones.",
     Icon: GitHubIcon,
     fields: [
       {
         key: "pat",
-        label: "Personal Access Token",
+        label: "Token de acceso personal",
         placeholder: "ghp_••••••••••••••••••••",
         type: "password",
       },
@@ -82,12 +83,12 @@ const PROVIDERS: ProviderMeta[] = [
   {
     provider: "slack",
     label: "Slack",
-    description: "Receive run notifications directly in a Slack channel.",
+    description: "Recibí notificaciones de ejecuciones directamente en un canal de Slack.",
     Icon: SlackIcon,
     fields: [
       {
         key: "webhook_url",
-        label: "Webhook URL",
+        label: "URL de webhook",
         placeholder: "https://hooks.slack.com/services/…",
       },
     ],
@@ -95,12 +96,12 @@ const PROVIDERS: ProviderMeta[] = [
   {
     provider: "discord",
     label: "Discord",
-    description: "Post run results to a Discord channel via webhook.",
+    description: "Publicá los resultados de ejecuciones en un canal de Discord mediante webhook.",
     Icon: DiscordIcon,
     fields: [
       {
         key: "webhook_url",
-        label: "Webhook URL",
+        label: "URL de webhook",
         placeholder: "https://discord.com/api/webhooks/…",
       },
     ],
@@ -108,18 +109,18 @@ const PROVIDERS: ProviderMeta[] = [
   {
     provider: "telegram",
     label: "Telegram",
-    description: "Send run notifications to a Telegram chat using a bot.",
+    description: "Enviá notificaciones de ejecuciones a un chat de Telegram usando un bot.",
     Icon: TelegramIcon,
     fields: [
       {
         key: "bot_token",
-        label: "Bot Token",
+        label: "Token del bot",
         placeholder: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
         type: "password",
       },
       {
         key: "chat_id",
-        label: "Chat ID",
+        label: "ID de chat",
         placeholder: "-1001234567890",
       },
     ],
@@ -151,7 +152,7 @@ export default function IntegrationsPage() {
         config: payload.config,
       }),
     onSuccess: (data) => {
-      toast.success(`${data.provider} integration saved.`);
+      toast.success(`Integración de ${data.provider} guardada.`);
       qc.setQueryData<IntegrationRow[]>(qk.integrations.list(), (prev) => {
         if (!prev) return [data];
         const idx = prev.findIndex((r) => r.provider === data.provider);
@@ -161,7 +162,7 @@ export default function IntegrationsPage() {
     },
     onError: (err) => {
       const isApi = err instanceof ApiClientError;
-      toast.error(isApi ? err.message : "Failed to save integration", {
+      toast.error(isApi ? err.message : "Error al guardar la integración", {
         description: isApi ? `Trace: ${err.traceId}` : undefined,
       });
     },
@@ -170,14 +171,14 @@ export default function IntegrationsPage() {
   const removeMutation = useMutation({
     mutationFn: (id: string) => apiClient.delete<void>(`/api/provider-integrations/${id}`),
     onSuccess: (_, id) => {
-      toast.success("Integration removed.");
+      toast.success("Integración eliminada.");
       qc.setQueryData<IntegrationRow[]>(qk.integrations.list(), (prev) =>
         prev ? prev.filter((r) => r.id !== id) : [],
       );
     },
     onError: (err) => {
       const isApi = err instanceof ApiClientError;
-      toast.error(isApi ? err.message : "Failed to remove integration");
+      toast.error(isApi ? err.message : "Error al eliminar la integración");
     },
   });
 
@@ -185,14 +186,14 @@ export default function IntegrationsPage() {
     mutationFn: (id: string) => apiClient.post<TestResult>(`/api/provider-integrations/${id}/test`),
     onSuccess: (result) => {
       if (result.success) {
-        toast.success("Connection test passed", { description: result.message });
+        toast.success("Prueba de conexión exitosa", { description: result.message });
       } else {
-        toast.error("Connection test failed", { description: result.message });
+        toast.error("Prueba de conexión fallida", { description: result.message });
       }
     },
     onError: (err) => {
       const isApi = err instanceof ApiClientError;
-      toast.error(isApi ? err.message : "Test failed");
+      toast.error(isApi ? err.message : "Prueba fallida");
     },
   });
 
@@ -201,10 +202,10 @@ export default function IntegrationsPage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-            Integrations
+            Integraciones
           </h1>
           <p className="text-sm text-muted-foreground">
-            Connect external services to enhance your workflow.
+            Conectá servicios externos para potenciar tu flujo de trabajo.
           </p>
         </header>
         {[1, 2, 3, 4].map((n) => (
@@ -230,9 +231,9 @@ export default function IntegrationsPage() {
         </header>
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-sm text-muted-foreground">Failed to load integrations.</p>
+            <p className="text-sm text-muted-foreground">Error al cargar las integraciones.</p>
             <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-              Retry
+              Reintentar
             </Button>
           </CardContent>
         </Card>
@@ -336,12 +337,12 @@ function IntegrationCard({
             {isConnected ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
                 <CheckCircle2Icon className="size-3" aria-hidden="true" />
-                Connected
+                Conectado
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 <CircleIcon className="size-3" aria-hidden="true" />
-                Not configured
+                No configurado
               </span>
             )}
           </div>
@@ -371,10 +372,10 @@ function IntegrationCard({
               {isSaving ? (
                 <>
                   <Loader2Icon className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-                  Saving…
+                  Guardando…
                 </>
               ) : (
-                "Save"
+                "Guardar"
               )}
             </Button>
 
@@ -390,16 +391,16 @@ function IntegrationCard({
                   {isTesting ? (
                     <>
                       <Loader2Icon className="mr-1.5 size-3.5 animate-spin" aria-hidden="true" />
-                      Testing…
+                      Probando…
                     </>
                   ) : (
-                    "Test"
+                    "Probar"
                   )}
                 </Button>
 
                 {confirmRemove ? (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground">Remove?</span>
+                    <span className="text-xs text-muted-foreground">¿Eliminar?</span>
                     <Button
                       type="button"
                       size="sm"
@@ -413,7 +414,7 @@ function IntegrationCard({
                       {isRemoving ? (
                         <Loader2Icon className="size-3.5 animate-spin" aria-hidden="true" />
                       ) : (
-                        "Confirm"
+                        "Confirmar"
                       )}
                     </Button>
                     <Button
@@ -422,7 +423,7 @@ function IntegrationCard({
                       variant="ghost"
                       onClick={() => setConfirmRemove(false)}
                     >
-                      Cancel
+                      Cancelar
                     </Button>
                   </div>
                 ) : (
@@ -432,10 +433,10 @@ function IntegrationCard({
                     variant="ghost"
                     className="text-muted-foreground hover:text-destructive"
                     onClick={() => setConfirmRemove(true)}
-                    aria-label={`Remove ${label} integration`}
+                    aria-label={`Eliminar integración de ${label}`}
                   >
                     <Trash2Icon className="size-3.5" aria-hidden="true" />
-                    <span className="ml-1.5">Remove</span>
+                    <span className="ml-1.5">Eliminar</span>
                   </Button>
                 )}
               </>

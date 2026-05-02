@@ -40,11 +40,11 @@ export function GuardianMetricsWidget({ metrics, className }: Props) {
 
   return (
     <div className={cn("flex flex-wrap gap-3", className)}>
-      <MetricCard label="Total Interventions" value={String(metrics.totalInterventions)} />
-      <MetricCard label="Avg Confidence" value={`${avgConfidencePct}%`} />
-      <MetricCard label="Override Rate" value={`${overridePct}%`} />
+      <MetricCard label="Intervenciones totales" value={String(metrics.totalInterventions)} />
+      <MetricCard label="Confianza promedio" value={`${avgConfidencePct}%`} />
+      <MetricCard label="Tasa de anulación" value={`${overridePct}%`} />
       <MetricCard
-        label="By Strategy"
+        label="Por estrategia"
         value={`${rule + def + llm}`}
         sub={
           <span className="flex gap-2">

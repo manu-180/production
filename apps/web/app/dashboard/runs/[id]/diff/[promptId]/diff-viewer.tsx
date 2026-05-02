@@ -33,7 +33,7 @@ export function DiffViewer({ file }: DiffViewerProps): React.ReactElement {
       <CardContent>
         {file.hunks.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No content shown (binary or rename without changes)
+            Sin contenido (binario o renombrado sin cambios)
           </p>
         ) : (
           <div className="font-mono text-xs overflow-x-auto rounded border bg-muted/30">

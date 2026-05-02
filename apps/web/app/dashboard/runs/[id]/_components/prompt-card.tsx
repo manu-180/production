@@ -1,19 +1,14 @@
 "use client";
-import type { PromptExecution } from "@conductor/db";
-import { motion } from "framer-motion";
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ExternalLinkIcon,
-  FileDiffIcon,
-} from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCostUsd, formatDuration, formatTokens } from "@/lib/ui/format";
-import { type ExecutionStatus, executionStatusInfo, TONE_CLASSES } from "@/lib/ui/status";
+import { type ExecutionStatus, TONE_CLASSES, executionStatusInfo } from "@/lib/ui/status";
 import { cn } from "@/lib/utils";
+import type { PromptExecution } from "@conductor/db";
+import { motion } from "framer-motion";
+import { ChevronDownIcon, ChevronUpIcon, ExternalLinkIcon, FileDiffIcon } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
 import { LiveLogStream } from "./live-log-stream";
 
 interface PromptExecutionView extends PromptExecution {
@@ -38,24 +33,19 @@ export function PromptCard({
   const info = executionStatusInfo(status);
   const tone = TONE_CLASSES[info.tone];
 
-  const title =
-    execution.prompts?.title ??
-    execution.prompts?.filename ??
-    `Prompt ${index + 1}`;
+  const title = execution.prompts?.title ?? execution.prompts?.filename ?? `Prompt ${index + 1}`;
   const isRunning = status === "running";
 
   const duration =
     execution.started_at !== null && execution.finished_at !== null
       ? formatDuration(
-          new Date(execution.finished_at).getTime() -
-            new Date(execution.started_at).getTime(),
+          new Date(execution.finished_at).getTime() - new Date(execution.started_at).getTime(),
         )
       : execution.duration_ms !== null
         ? formatDuration(execution.duration_ms)
         : null;
 
-  const totalTokens =
-    execution.input_tokens + execution.output_tokens + execution.cache_tokens;
+  const totalTokens = execution.input_tokens + execution.output_tokens + execution.cache_tokens;
 
   return (
     <Card
@@ -95,7 +85,7 @@ export function PromptCard({
             {duration && <span>⏱ {duration}</span>}
             {totalTokens > 0 && <span>🔣 {formatTokens(totalTokens)}</span>}
             {execution.cost_usd > 0 && <span>💵 {formatCostUsd(execution.cost_usd)}</span>}
-            {execution.attempt > 0 && <span>↻ attempt {execution.attempt + 1}</span>}
+            {execution.attempt > 0 && <span>↻ intento {execution.attempt + 1}</span>}
           </div>
         </div>
 
@@ -115,7 +105,7 @@ export function PromptCard({
           <CardContent className="space-y-4 border-t border-border bg-muted/10 p-4">
             {status === "failed" && execution.error_message && (
               <div className="rounded-lg border border-rose-500/30 bg-rose-500/5 p-3 text-xs text-rose-400">
-                <div className="font-medium">Failure</div>
+                <div className="font-medium">Fallo</div>
                 <div className="mt-0.5 font-mono">{execution.error_code ?? "error"}</div>
                 <div className="mt-1 whitespace-pre-wrap">{execution.error_message}</div>
               </div>
@@ -123,7 +113,7 @@ export function PromptCard({
 
             {status === "awaiting_approval" && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-500">
-                Awaiting your approval — see the modal blocking this view.
+                Esperando tu aprobación — revisá el modal que bloquea esta vista.
               </div>
             )}
 
@@ -136,12 +126,10 @@ export function PromptCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  render={
-                    <Link href={`/dashboard/runs/${runId}/diff/${execution.prompt_id}`} />
-                  }
+                  render={<Link href={`/dashboard/runs/${runId}/diff/${execution.prompt_id}`} />}
                   className="gap-1.5"
                 >
-                  <FileDiffIcon className="size-3.5" /> View diff
+                  <FileDiffIcon className="size-3.5" /> Ver diferencias
                 </Button>
               )}
               {execution.checkpoint_sha && (
@@ -151,20 +139,20 @@ export function PromptCard({
               )}
               {execution.claude_session_id && (
                 <span className="font-mono text-[10px] text-muted-foreground">
-                  session {execution.claude_session_id.slice(0, 12)}
+                  sesión {execution.claude_session_id.slice(0, 12)}
                 </span>
               )}
               <Link
                 href={`/dashboard/runs/${runId}/decisions`}
                 className="ml-auto inline-flex items-center gap-0.5 text-[11px] text-primary hover:underline"
               >
-                Decisions
+                Decisiones
                 <ExternalLinkIcon className="size-3" />
               </Link>
             </div>
             {!isRunning && status !== "succeeded" && status !== "failed" && (
               <p className="text-center text-[11px] text-muted-foreground">
-                Logs will appear once this prompt starts.
+                Los registros aparecerán cuando este prompt comience.
               </p>
             )}
           </CardContent>

@@ -1,11 +1,11 @@
 "use client";
-import type { Run } from "@conductor/db";
-import { ChevronRightIcon, FileTextIcon } from "lucide-react";
-import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCostUsd, formatDuration, formatRelativeTime } from "@/lib/ui/format";
 import type { RunStatus } from "@/lib/ui/status";
+import type { Run } from "@conductor/db";
+import { ChevronRightIcon, FileTextIcon } from "lucide-react";
+import Link from "next/link";
 import { RunStatusBadge } from "../runs/_components/run-status-badge";
 
 interface Props {
@@ -44,15 +44,15 @@ export function RecentRunsList({ runs, isLoading }: Props) {
       <Card>
         <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
           <FileTextIcon className="size-8 text-muted-foreground" />
-          <div className="text-sm font-medium">No runs yet</div>
+          <div className="text-sm font-medium">Todavía no hay ejecuciones</div>
           <p className="max-w-sm text-xs text-muted-foreground">
-            Create a plan and trigger your first run to start seeing live activity.
+            Creá un plan y ejecutalo por primera vez para empezar a ver actividad en vivo.
           </p>
           <Link
             href="/dashboard/plans/new"
             className="text-xs font-medium text-primary hover:underline"
           >
-            Create your first plan →
+            Creá tu primer plan →
           </Link>
         </CardContent>
       </Card>

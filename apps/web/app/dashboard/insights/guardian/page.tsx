@@ -36,8 +36,8 @@ function formatConfidence(n: number): string {
 
 function strategyLabel(s: GuardianDailyMetric["strategy"]): string {
   const map: Record<GuardianDailyMetric["strategy"], string> = {
-    rule: "Rule",
-    default: "Default",
+    rule: "Regla",
+    default: "Predeterminada",
     llm: "LLM",
   };
   return map[s];
@@ -97,44 +97,46 @@ export default function GuardianInsightsPage() {
     <div className="mx-auto max-w-7xl flex flex-col gap-6 pb-10">
       {/* Header */}
       <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Guardian Analytics</h1>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">
+          Analíticas del Guardián
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Decision patterns and confidence metrics.
+          Patrones de decisiones y métricas de confianza.
         </p>
       </div>
 
       {/* Error banner */}
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load Guardian data. Refresh to try again.
+          No se pudieron cargar los datos del Guardián. Actualizá la página para intentar de nuevo.
         </div>
       )}
 
       {/* Empty state */}
       {!isLoading && !isError && guardianByDay.length === 0 && (
         <div className="py-10 text-center text-sm text-muted-foreground">
-          No Guardian decisions recorded yet.
+          Todavía no hay decisiones del Guardián registradas.
         </div>
       )}
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
-          label="Total decisions"
+          label="Total de decisiones"
           value={isLoading ? "—" : totalDecisions.toLocaleString()}
           icon={BarChart3}
           tone="info"
           loading={isLoading}
         />
         <KpiCard
-          label="Avg confidence"
+          label="Confianza promedio"
           value={isLoading ? "—" : formatConfidence(avgConfidence)}
           icon={TrendingUp}
           tone="success"
           loading={isLoading}
         />
         <KpiCard
-          label="Override rate"
+          label="Tasa de anulación"
           value={isLoading ? "—" : `${overrideRate.toFixed(1)}%`}
           icon={Activity}
           tone={overrideRate > 20 ? "warning" : "neutral"}
@@ -148,7 +150,7 @@ export default function GuardianInsightsPage() {
           {/* Strategy distribution */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Strategy distribution</CardTitle>
+              <CardTitle className="text-base font-medium">Distribución de estrategias</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -164,7 +166,7 @@ export default function GuardianInsightsPage() {
           {/* Daily confidence trend */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base font-medium">Daily confidence trend</CardTitle>
+              <CardTitle className="text-base font-medium">Tendencia de confianza diaria</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -186,7 +188,7 @@ export default function GuardianInsightsPage() {
       {(isLoading || guardianByDay.length > 0) && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Daily decisions</CardTitle>
+            <CardTitle className="text-base font-medium">Decisiones diarias</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
@@ -200,12 +202,12 @@ export default function GuardianInsightsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Day</TableHead>
-                    <TableHead>Strategy</TableHead>
-                    <TableHead className="text-right">Avg confidence</TableHead>
-                    <TableHead className="text-right">Total decisions</TableHead>
-                    <TableHead className="text-right">Human reviewed</TableHead>
-                    <TableHead className="text-right">Overridden</TableHead>
+                    <TableHead>Día</TableHead>
+                    <TableHead>Estrategia</TableHead>
+                    <TableHead className="text-right">Confianza promedio</TableHead>
+                    <TableHead className="text-right">Total de decisiones</TableHead>
+                    <TableHead className="text-right">Revisadas por humano</TableHead>
+                    <TableHead className="text-right">Anuladas</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

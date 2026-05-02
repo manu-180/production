@@ -39,7 +39,7 @@ function HealthRow({ item }: { item: HealthItem }) {
 
 export function DoneStep({ workingDir }: Props) {
   const [health, setHealth] = useState<HealthItem[]>([
-    { label: "Claude token", status: "loading" },
+    { label: "Token de Claude", status: "loading" },
     { label: "Claude CLI", status: "loading" },
   ]);
 
@@ -69,21 +69,21 @@ export function DoneStep({ workingDir }: Props) {
 
       setHealth([
         {
-          label: "Claude token",
+          label: "Token de Claude",
           status: tokenConfigured ? "ok" : "warn",
-          detail: tokenConfigured ? "configured" : "not configured",
+          detail: tokenConfigured ? "configurado" : "no configurado",
         },
         {
           label: "Claude CLI",
           status: cliInstalled ? "ok" : "warn",
-          detail: cliVersion ?? (cliInstalled ? "installed" : "not found"),
+          detail: cliVersion ?? (cliInstalled ? "instalado" : "no encontrado"),
         },
       ]);
     }
 
     runChecks().catch(() => {
       setHealth([
-        { label: "Claude token", status: "error" },
+        { label: "Token de Claude", status: "error" },
         { label: "Claude CLI", status: "error" },
       ]);
     });
@@ -92,9 +92,9 @@ export function DoneStep({ workingDir }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>You&apos;re all set</CardTitle>
+        <CardTitle>Todo listo</CardTitle>
         <CardDescription>
-          Conductor is configured and ready to orchestrate your Claude CLI processes.
+          Conductor está configurado y listo para orquestar tus procesos de Claude CLI.
         </CardDescription>
       </CardHeader>
 
@@ -102,7 +102,7 @@ export function DoneStep({ workingDir }: Props) {
         {/* Health check */}
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-3 flex flex-col gap-2">
           <p className="text-xs font-mono uppercase tracking-wide text-muted-foreground mb-1">
-            System health
+            Estado del sistema
           </p>
           {health.map((item) => (
             <HealthRow key={item.label} item={item} />
@@ -111,7 +111,7 @@ export function DoneStep({ workingDir }: Props) {
           {workingDir && (
             <div className="flex items-center gap-2.5 text-sm">
               <FolderOpen className="size-3.5 shrink-0 text-emerald-500" />
-              <span className="text-foreground">Working directory</span>
+              <span className="text-foreground">Directorio de trabajo</span>
               <span className="ml-auto font-mono text-xs text-muted-foreground truncate max-w-[180px]">
                 {workingDir}
               </span>
@@ -123,8 +123,8 @@ export function DoneStep({ workingDir }: Props) {
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 flex items-start gap-2.5">
           <Terminal className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <p className="text-sm text-muted-foreground leading-snug">
-            Head to the dashboard to create your first plan. Define prompts, set checkpoints, and
-            let Conductor handle the rest.
+            Andá al dashboard para crear tu primer plan. Definí los prompts, establecé checkpoints y
+            dejá que Conductor se encargue del resto.
           </p>
         </div>
 
@@ -133,7 +133,7 @@ export function DoneStep({ workingDir }: Props) {
           className="w-full"
           render={
             <Link href="/" className="inline-flex items-center justify-center gap-2">
-              Go to Dashboard
+              Ir al Dashboard
             </Link>
           }
         />

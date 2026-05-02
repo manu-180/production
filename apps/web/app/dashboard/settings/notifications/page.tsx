@@ -25,17 +25,17 @@ import { SettingsNav } from "../_components/settings-nav";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const EVENT_LABELS: Record<string, string> = {
-  "run.completed": "Run completed",
-  "run.failed": "Run failed",
-  "auth.invalid": "Auth token invalid",
-  "circuit.open": "Circuit breaker opened",
-  "rate_limit.long": "Long rate limit wait",
-  "approval.required": "Approval required",
-  "cost.threshold": "Monthly cost threshold",
+  "run.completed": "Ejecución completada",
+  "run.failed": "Ejecución fallida",
+  "auth.invalid": "Token de autenticación inválido",
+  "circuit.open": "Circuit breaker abierto",
+  "rate_limit.long": "Espera larga por límite de tasa",
+  "approval.required": "Aprobación requerida",
+  "cost.threshold": "Umbral de costo mensual",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
-  desktop: "Desktop",
+  desktop: "Escritorio",
   email: "Email",
   slack: "Slack",
   discord: "Discord",
@@ -101,7 +101,7 @@ function ChannelConfigSection({
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.notifications.channels() });
     },
-    onError: (err) => handleApiError(err, "Failed to save channel config"),
+    onError: (err) => handleApiError(err, "Error al guardar la configuración del canal"),
   });
 
   function handleBlur(channel: string, config: Record<string, unknown>) {
@@ -111,18 +111,18 @@ function ChannelConfigSection({
   return (
     <Card>
       <CardContent className="p-6">
-        <h2 className="font-heading mb-4 text-base font-semibold">Channel Configuration</h2>
+        <h2 className="font-heading mb-4 text-base font-semibold">Configuración de canales</h2>
         <div className="space-y-4">
           {/* Desktop */}
           <ChannelRow
-            label="Desktop"
-            badge="Always on"
+            label="Escritorio"
+            badge="Siempre activo"
             channel="desktop"
             onTest={onTestChannel}
             isTesting={isTesting}
           >
             <span className="text-xs text-muted-foreground">
-              Browser push notifications — no configuration required.
+              Notificaciones push del navegador — no requiere configuración.
             </span>
           </ChannelRow>
 
@@ -211,7 +211,7 @@ function ChannelRow({
         disabled={isTesting !== null}
         className="shrink-0 text-xs"
       >
-        {isTesting === channel ? "Sending…" : "Send test"}
+        {isTesting === channel ? "Enviando…" : "Enviar prueba"}
       </Button>
     </div>
   );
@@ -282,7 +282,7 @@ function TelegramInput({
   return (
     <div className="flex gap-2">
       <div className="flex-1">
-        <Label className="mb-1 text-xs text-muted-foreground">Bot token</Label>
+        <Label className="mb-1 text-xs text-muted-foreground">Token del bot</Label>
         <Input
           ref={tokenRef}
           key={botToken}
@@ -293,7 +293,7 @@ function TelegramInput({
         />
       </div>
       <div className="w-36">
-        <Label className="mb-1 text-xs text-muted-foreground">Chat ID</Label>
+        <Label className="mb-1 text-xs text-muted-foreground">ID de chat</Label>
         <Input
           ref={chatRef}
           key={chatId}
@@ -319,11 +319,11 @@ function PreferencesMatrix({
   return (
     <Card>
       <CardContent className="p-6">
-        <h2 className="font-heading mb-4 text-base font-semibold">Event Preferences</h2>
+        <h2 className="font-heading mb-4 text-base font-semibold">Preferencias de eventos</h2>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[160px]">Event</TableHead>
+              <TableHead className="min-w-[160px]">Evento</TableHead>
               {CHANNELS.map((ch) => (
                 <TableHead key={ch} className="text-center">
                   {CHANNEL_LABELS[ch]}
@@ -436,7 +436,7 @@ export default function NotificationsSettingsPage() {
       if (ctx?.previous !== undefined) {
         qc.setQueryData(qk.notifications.preferences(), ctx.previous);
       }
-      handleApiError(err, "Failed to update preference");
+      handleApiError(err, "Error al actualizar la preferencia");
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: qk.notifications.preferences() });
@@ -448,13 +448,13 @@ export default function NotificationsSettingsPage() {
       apiClient.post<TestResult>("/api/notifications/test", { channel }),
     onSuccess: (data, channel) => {
       if (data.success) {
-        toast.success(`Test notification sent to ${CHANNEL_LABELS[channel] ?? channel}`);
+        toast.success(`Notificación de prueba enviada a ${CHANNEL_LABELS[channel] ?? channel}`);
       } else {
-        toast.error("Test failed", { description: data.error });
+        toast.error("Prueba fallida", { description: data.error });
       }
     },
     onError: (err, channel) =>
-      handleApiError(err, `Failed to send test to ${CHANNEL_LABELS[channel] ?? channel}`),
+      handleApiError(err, `Error al enviar prueba a ${CHANNEL_LABELS[channel] ?? channel}`),
   });
 
   function handleToggle(key: PreferenceKey, enabled: boolean) {
@@ -472,7 +472,7 @@ export default function NotificationsSettingsPage() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-            Settings
+            Configuración
           </h1>
         </header>
         <SettingsNav />
@@ -486,13 +486,15 @@ export default function NotificationsSettingsPage() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-            Settings
+            Configuración
           </h1>
         </header>
         <SettingsNav />
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <p className="text-sm text-muted-foreground">Failed to load notification settings.</p>
+            <p className="text-sm text-muted-foreground">
+              Error al cargar la configuración de notificaciones.
+            </p>
             <Button
               size="sm"
               variant="outline"
@@ -501,7 +503,7 @@ export default function NotificationsSettingsPage() {
                 void channelsQuery.refetch();
               }}
             >
-              Retry
+              Reintentar
             </Button>
           </CardContent>
         </Card>
@@ -512,9 +514,11 @@ export default function NotificationsSettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">Settings</h1>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
+          Configuración
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Configure which events trigger notifications and through which channels.
+          Configurá qué eventos disparan notificaciones y a través de qué canales.
         </p>
       </header>
 

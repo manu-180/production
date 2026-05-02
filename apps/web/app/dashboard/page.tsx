@@ -1,14 +1,8 @@
 "use client";
-import {
-  ActivityIcon,
-  BarChart3Icon,
-  ClockIcon,
-  DollarSignIcon,
-  RocketIcon,
-} from "lucide-react";
-import { useActiveRuns, useRunsList } from "@/hooks/use-runs-list";
 import { useDashboardKpis } from "@/hooks/use-dashboard-kpis";
+import { useActiveRuns, useRunsList } from "@/hooks/use-runs-list";
 import { formatCostUsd, formatDuration } from "@/lib/ui/format";
+import { ActivityIcon, BarChart3Icon, ClockIcon, DollarSignIcon, RocketIcon } from "lucide-react";
 import { ActiveRunCard } from "./_components/active-run-card";
 import { KpiCard } from "./_components/kpi-card";
 import { RecentRunsList } from "./_components/recent-runs-list";
@@ -24,11 +18,9 @@ export default function DashboardHomePage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">Panel</h1>
         <p className="text-sm text-muted-foreground">
-          Live view of your runs, costs, and Claude activity.
+          Vista en tiempo real de tus ejecuciones, costos y actividad de Claude.
         </p>
       </header>
 
@@ -37,41 +29,37 @@ export default function DashboardHomePage() {
         className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5"
       >
         <KpiCard
-          label="Runs today"
+          label="Ejecuciones hoy"
           value={kpis.data?.runsToday ?? "—"}
-          delta={`${kpis.data?.runsThisWeek ?? 0} this week`}
+          delta={`${kpis.data?.runsThisWeek ?? 0} esta semana`}
           icon={ActivityIcon}
           tone="info"
           loading={kpis.isLoading}
         />
         <KpiCard
-          label="Active"
+          label="Activo"
           value={kpis.data?.activeCount ?? "—"}
-          delta={kpis.data?.activeCount ? "running now" : "all idle"}
+          delta={kpis.data?.activeCount ? "ejecutando ahora" : "todas inactivas"}
           icon={RocketIcon}
           tone={kpis.data?.activeCount ? "success" : "neutral"}
           loading={kpis.isLoading}
         />
         <KpiCard
-          label="Cost this month"
+          label="Costo este mes"
           value={kpis.data ? formatCostUsd(kpis.data.costThisMonth) : "—"}
           icon={DollarSignIcon}
           tone="warning"
           loading={kpis.isLoading}
         />
         <KpiCard
-          label="Success rate (30d)"
-          value={
-            kpis.data
-              ? `${Math.round(kpis.data.successRate30d * 100)}%`
-              : "—"
-          }
+          label="Tasa de éxito (30d)"
+          value={kpis.data ? `${Math.round(kpis.data.successRate30d * 100)}%` : "—"}
           icon={BarChart3Icon}
           tone="success"
           loading={kpis.isLoading}
         />
         <KpiCard
-          label="Avg run duration"
+          label="Duración promedio"
           value={
             kpis.data?.avgDurationMs !== null && kpis.data?.avgDurationMs !== undefined
               ? formatDuration(kpis.data.avgDurationMs)
@@ -84,13 +72,13 @@ export default function DashboardHomePage() {
       </section>
 
       {activeRuns.length > 0 && (
-        <section aria-label="Active runs" className="flex flex-col gap-3">
+        <section aria-label="Ejecuciones activas" className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="font-heading text-lg font-semibold tracking-tight">
-              Active runs
+              Ejecuciones activas
             </h2>
             <span className="text-xs text-muted-foreground">
-              {activeRuns.length} running or paused
+              {activeRuns.length} ejecutando o pausadas
             </span>
           </div>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -101,10 +89,10 @@ export default function DashboardHomePage() {
         </section>
       )}
 
-      <section aria-label="Recent runs" className="flex flex-col gap-3">
+      <section aria-label="Ejecuciones recientes" className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="font-heading text-lg font-semibold tracking-tight">
-            Recent runs
+            Ejecuciones recientes
           </h2>
         </div>
         <RecentRunsList runs={recentRuns} isLoading={recent.isLoading} />

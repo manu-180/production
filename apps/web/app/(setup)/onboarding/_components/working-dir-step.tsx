@@ -74,17 +74,17 @@ export function WorkingDirStep({ onComplete }: Props) {
         setValidationState(info.exists && info.isDir ? "valid" : "invalid");
 
         if (!info.exists) {
-          setErrorMsg("Path does not exist on this machine.");
+          setErrorMsg("La ruta no existe en esta máquina.");
         } else if (!info.isDir) {
-          setErrorMsg("Path exists but is a file, not a directory.");
+          setErrorMsg("La ruta existe pero es un archivo, no un directorio.");
         }
       } else {
         setValidationState("invalid");
-        setErrorMsg("Unexpected response from server.");
+        setErrorMsg("Respuesta inesperada del servidor.");
       }
     } catch {
       setValidationState("invalid");
-      setErrorMsg("Network error — is the server running?");
+      setErrorMsg("Error de red — ¿está corriendo el servidor?");
     }
   }
 
@@ -100,10 +100,10 @@ export function WorkingDirStep({ onComplete }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Set a default working directory</CardTitle>
+        <CardTitle>Configurá un directorio de trabajo predeterminado</CardTitle>
         <CardDescription>
-          Conductor will use this directory as the root for Claude CLI processes unless you override
-          it per-task.
+          Conductor usará este directorio como raíz para los procesos de Claude CLI, salvo que lo
+          reemplaces por tarea.
         </CardDescription>
       </CardHeader>
 
@@ -133,7 +133,7 @@ export function WorkingDirStep({ onComplete }: Props) {
             className="font-mono text-sm"
           />
           <Button type="button" variant="outline" onClick={handleValidate} disabled={!canValidate}>
-            {validationState === "loading" ? "Checking…" : "Validate"}
+            {validationState === "loading" ? "Verificando…" : "Validar"}
           </Button>
         </div>
 
@@ -147,12 +147,12 @@ export function WorkingDirStep({ onComplete }: Props) {
 
         {pathInfo !== null && validationState === "valid" && (
           <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 flex flex-col gap-1.5">
-            <PathStatusRow ok={pathInfo.exists} label="Directory exists" />
-            <PathStatusRow ok={pathInfo.isWritable} label="Writable" />
+            <PathStatusRow ok={pathInfo.exists} label="El directorio existe" />
+            <PathStatusRow ok={pathInfo.isWritable} label="Con permiso de escritura" />
             <div className="flex items-center gap-2 text-sm">
               <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
               <span className={pathInfo.isGitRepo ? "text-foreground" : "text-muted-foreground"}>
-                {pathInfo.isGitRepo ? "Git repository detected" : "Not a git repository"}
+                {pathInfo.isGitRepo ? "Repositorio Git detectado" : "No es un repositorio Git"}
               </span>
             </div>
           </div>
@@ -165,11 +165,11 @@ export function WorkingDirStep({ onComplete }: Props) {
             onClick={() => onComplete("")}
             className="text-xs text-muted-foreground underline-offset-4 hover:underline hover:text-foreground transition-colors"
           >
-            Skip for now
+            Saltearlo por ahora
           </button>
           <Button type="button" onClick={handleContinue} disabled={!canContinue}>
             <FolderOpen className="size-4" />
-            Save & Continue
+            Guardar y continuar
             <ChevronRight className="size-4" />
           </Button>
         </div>

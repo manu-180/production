@@ -39,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
     <Badge
       variant="outline"
       className={cn("border-transparent font-medium capitalize", colorClass)}
-      aria-label={`Run status: ${label}`}
+      aria-label={`Estado de la ejecución: ${label}`}
     >
       {label}
     </Badge>
@@ -125,30 +125,32 @@ export default function PlanRunsPage() {
       {/* Page header */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-heading text-xl font-semibold tracking-tight">Run History</h1>
-          <p className="text-sm text-muted-foreground">All runs for this plan</p>
+          <h1 className="font-heading text-xl font-semibold tracking-tight">
+            Historial de ejecuciones
+          </h1>
+          <p className="text-sm text-muted-foreground">Todas las ejecuciones de este plan</p>
         </div>
         <Button
           render={<Link href={`/dashboard/plans/${planId}`} />}
           variant="outline"
           size="sm"
-          aria-label="Back to plan editor"
+          aria-label="Volver al editor del plan"
         >
           <ArrowLeftIcon className="mr-1.5 size-4" aria-hidden="true" />
-          Back to Plan
+          Volver al plan
         </Button>
       </header>
 
       {/* Error state */}
       {query.isError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Failed to load runs.{" "}
+          Error al cargar las ejecuciones.{" "}
           <button
             type="button"
             onClick={() => query.refetch()}
             className="underline underline-offset-2 hover:no-underline"
           >
-            Try again
+            Intentar de nuevo
           </button>
         </div>
       )}
@@ -160,13 +162,13 @@ export default function PlanRunsPage() {
             <PlayIcon className="size-6 text-muted-foreground" aria-hidden="true" />
           </div>
           <div>
-            <p className="font-medium text-foreground">No runs yet</p>
+            <p className="font-medium text-foreground">Sin ejecuciones aún</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Launch your first run from the plan editor.
+              Lanzá tu primera ejecución desde el editor del plan.
             </p>
           </div>
           <Button render={<Link href={`/dashboard/plans/${planId}`} />} size="sm">
-            Open Plan Editor
+            Abrir editor del plan
           </Button>
         </div>
       )}
@@ -174,14 +176,14 @@ export default function PlanRunsPage() {
       {/* Runs table */}
       {(isInitialLoading || allRuns.length > 0) && (
         <div className="overflow-hidden rounded-xl border border-border">
-          <Table aria-label="Plan run history">
+          <Table aria-label="Historial de ejecuciones del plan">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-32">Status</TableHead>
-                <TableHead className="w-36">Started</TableHead>
-                <TableHead className="w-24">Duration</TableHead>
-                <TableHead className="w-24">Cost</TableHead>
-                <TableHead>Working Dir</TableHead>
+                <TableHead className="w-32">Estado</TableHead>
+                <TableHead className="w-36">Iniciado</TableHead>
+                <TableHead className="w-24">Duración</TableHead>
+                <TableHead className="w-24">Costo</TableHead>
+                <TableHead>Directorio de trabajo</TableHead>
                 <TableHead className="w-20 text-right">
                   <span className="sr-only">Actions</span>
                 </TableHead>
@@ -196,7 +198,7 @@ export default function PlanRunsPage() {
                     key={run.id}
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => router.push(`/dashboard/runs/${run.id}`)}
-                    aria-label={`View run from ${formatRelativeTime(run.created_at)}, status: ${run.status}`}
+                    aria-label={`Ver ejecución de ${formatRelativeTime(run.created_at)}, estado: ${run.status}`}
                   >
                     <TableCell>
                       <StatusBadge status={run.status} />
@@ -221,9 +223,9 @@ export default function PlanRunsPage() {
                         size="sm"
                         variant="ghost"
                         render={<Link href={`/dashboard/runs/${run.id}`} />}
-                        aria-label={`View run details for run started ${formatRelativeTime(run.created_at)}`}
+                        aria-label={`Ver detalles de la ejecución iniciada ${formatRelativeTime(run.created_at)}`}
                       >
-                        View
+                        Ver
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -244,8 +246,8 @@ export default function PlanRunsPage() {
       {!isInitialLoading && allRuns.length > 0 && (
         <p className="text-center text-xs text-muted-foreground">
           {query.hasNextPage
-            ? `Showing ${allRuns.length} runs — scroll for more`
-            : `${allRuns.length} run${allRuns.length !== 1 ? "s" : ""} total`}
+            ? `Mostrando ${allRuns.length} ejecuciones — desplazate para ver más`
+            : `${allRuns.length} ejecución${allRuns.length !== 1 ? "es" : ""} en total`}
         </p>
       )}
     </div>

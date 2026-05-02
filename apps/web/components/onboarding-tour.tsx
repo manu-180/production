@@ -49,7 +49,7 @@ export function OnboardingTour({ onboardingCompleted }: OnboardingTourProps) {
               return;
             }
 
-            toast.success("Onboarding completed! Enjoy using Conductor.");
+            toast.success("¡Onboarding completado! Disfrutá Conductor.");
           } catch (error) {
             console.error("Error marking onboarding complete:", error);
           }
@@ -58,9 +58,9 @@ export function OnboardingTour({ onboardingCompleted }: OnboardingTourProps) {
         const tourSteps: Array<Record<string, unknown>> = [
           {
             popover: {
-              title: "Welcome to Conductor 👋",
+              title: "Bienvenido a Conductor 👋",
               description:
-                "Let's take a quick tour of the main features. You can skip this at any time.",
+                "Hagamos un recorrido rápido por las funciones principales. Podés saltearlo en cualquier momento.",
               side: "over",
               align: "center",
             },
@@ -68,62 +68,62 @@ export function OnboardingTour({ onboardingCompleted }: OnboardingTourProps) {
           {
             element: '[data-tour="sidebar"]',
             popover: {
-              title: "Navigation",
+              title: "Navegación",
               description:
-                "Navigate between Runs, Plans, Schedules, Templates, and Settings from here.",
+                "Desde acá podés navegar entre Ejecuciones, Planes, Programaciones, Plantillas y Configuración.",
               side: "right",
             },
           },
           {
             element: '[data-tour="nav-plans"]',
             popover: {
-              title: "Plans",
+              title: "Planes",
               description:
-                "A Plan is a sequence of prompts that Claude executes. Create plans for recurring tasks like code reviews, refactoring, or documentation.",
+                "Un Plan es una secuencia de prompts que ejecuta Claude. Creá planes para tareas recurrentes como revisiones de código, refactoring o documentación.",
               side: "right",
             },
           },
           {
             element: '[data-tour="nav-runs"]',
             popover: {
-              title: "Runs",
+              title: "Ejecuciones",
               description:
-                "Each time you execute a plan, it creates a Run. Watch progress in real-time and review logs when done.",
+                "Cada vez que ejecutás un plan, se crea una Ejecución. Seguí el progreso en tiempo real y revisá los logs cuando termine.",
               side: "right",
             },
           },
           {
             element: '[data-tour="nav-schedules"]',
             popover: {
-              title: "Schedules",
+              title: "Programaciones",
               description:
-                "Automate plan execution with cron schedules. Set it and forget it — runs happen automatically.",
+                "Automatizá la ejecución de planes con horarios cron. Configuralo una vez y olvidate — las ejecuciones pasan solas.",
               side: "right",
             },
           },
           {
             element: '[data-tour="nav-templates"]',
             popover: {
-              title: "Templates",
+              title: "Plantillas",
               description:
-                "Get started quickly with pre-built templates for common tasks like Web App MVP, Refactoring, or Test Generation.",
+                "Empezá rápido con plantillas prediseñadas para tareas comunes como MVP de app web, Refactoring o Generación de tests.",
               side: "right",
             },
           },
           {
             element: '[data-tour="nav-settings"]',
             popover: {
-              title: "Settings & Notifications",
+              title: "Configuración y Notificaciones",
               description:
-                "Configure notification channels (Slack, Email, Discord), connect GitHub, and manage your account.",
+                "Configurá canales de notificación (Slack, Email, Discord), conectá GitHub y administrá tu cuenta.",
               side: "right",
             },
           },
           {
             popover: {
-              title: "Pro Tip: Keyboard Shortcuts",
+              title: "Consejo Pro: Atajos de teclado",
               description:
-                "Press ? anywhere to see all keyboard shortcuts. Use Cmd+K to open the command palette. Press g p to go to Plans.",
+                "Presioná ? en cualquier momento para ver todos los atajos de teclado. Usá Cmd+K para abrir la paleta de comandos. Presioná g p para ir a Planes.",
               side: "over",
               align: "center",
             },
@@ -136,9 +136,9 @@ export function OnboardingTour({ onboardingCompleted }: OnboardingTourProps) {
           allowClose: true,
           overlayOpacity: 0.5,
           smoothScroll: true,
-          doneBtnText: "Finish",
-          nextBtnText: "Next",
-          prevBtnText: "Previous",
+          doneBtnText: "Finalizar",
+          nextBtnText: "Siguiente",
+          prevBtnText: "Anterior",
         };
 
         const driverInstance = driver(config);

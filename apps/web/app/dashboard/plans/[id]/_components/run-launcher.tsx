@@ -58,7 +58,7 @@ export function RunLauncherDialog({
   function handleLaunch() {
     const trimmedDir = workingDir.trim();
     if (!trimmedDir) {
-      toast.error("Working directory is required");
+      toast.error("El directorio de trabajo es obligatorio");
       return;
     }
 
@@ -71,12 +71,12 @@ export function RunLauncherDialog({
             setDryRunResult(result as unknown as DryRunResult);
           } else {
             onClose();
-            toast.success("Run started");
+            toast.success("Ejecución iniciada");
             router.push(`/dashboard/runs/${result.runId}`);
           }
         },
         onError: (err) => {
-          toast.error(err.message ?? "Failed to start run");
+          toast.error(err.message ?? "Error al iniciar la ejecución");
         },
       },
     );
@@ -90,7 +90,7 @@ export function RunLauncherDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PlayIcon className="size-4" />
-            Launch Run
+            Lanzar ejecución
           </DialogTitle>
         </DialogHeader>
 
@@ -98,7 +98,7 @@ export function RunLauncherDialog({
           {/* Working directory */}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="run-working-dir" className="text-sm font-medium">
-              Working directory{" "}
+              Directorio de trabajo{" "}
               <span className="text-rose-500" aria-hidden>
                 *
               </span>
@@ -124,9 +124,9 @@ export function RunLauncherDialog({
           {/* Dry run toggle */}
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
             <div>
-              <p className="text-sm font-medium">Dry run</p>
+              <p className="text-sm font-medium">Ejecución de prueba</p>
               <p className="text-xs text-muted-foreground">
-                Preview which prompts would execute without running them
+                Previsualizá qué prompts se ejecutarían sin correrlos realmente
               </p>
             </div>
             <Switch
@@ -144,7 +144,7 @@ export function RunLauncherDialog({
               <TerminalIcon className="size-4 text-muted-foreground" />
               <span>
                 <span className="font-medium tabular-nums">{promptCount}</span> prompt
-                {promptCount !== 1 ? "s" : ""} will {dryRun ? "be previewed" : "execute"}
+                {promptCount !== 1 ? "s" : ""} {dryRun ? "se previsualizarán" : "se ejecutarán"}
               </span>
             </div>
           )}
@@ -153,8 +153,8 @@ export function RunLauncherDialog({
           {dryRunResult && (
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium text-emerald-600">
-                Dry run complete — {dryRunResult.prompts?.length ?? 0} prompt
-                {(dryRunResult.prompts?.length ?? 0) !== 1 ? "s" : ""} would execute
+                Prueba completada — {dryRunResult.prompts?.length ?? 0} prompt
+                {(dryRunResult.prompts?.length ?? 0) !== 1 ? "s" : ""} se ejecutarían
               </p>
               {dryRunResult.prompts && dryRunResult.prompts.length > 0 && (
                 <ScrollArea className="max-h-40 rounded-md border border-border">
@@ -167,7 +167,7 @@ export function RunLauncherDialog({
                         <span className="text-muted-foreground tabular-nums w-5 text-right shrink-0">
                           {i + 1}
                         </span>
-                        <span className="truncate">{p.title ?? p.filename ?? "Untitled"}</span>
+                        <span className="truncate">{p.title ?? p.filename ?? "Sin título"}</span>
                       </div>
                     ))}
                   </div>
@@ -184,7 +184,7 @@ export function RunLauncherDialog({
               onClick={onClose}
               disabled={triggerRun.isPending}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               className="flex-1 gap-2"
@@ -194,12 +194,12 @@ export function RunLauncherDialog({
               {triggerRun.isPending ? (
                 <>
                   <Loader2Icon className="size-4 animate-spin" />
-                  {dryRun ? "Simulating..." : "Launching..."}
+                  {dryRun ? "Simulando..." : "Lanzando..."}
                 </>
               ) : (
                 <>
                   <PlayIcon className="size-4" />
-                  {dryRun ? "Simulate" : "Launch"}
+                  {dryRun ? "Simular" : "Lanzar"}
                 </>
               )}
             </Button>
@@ -244,10 +244,12 @@ export function RunLauncherButton({
         className="w-full gap-2"
         onClick={() => setOpen(true)}
         disabled={promptCount === 0}
-        title={promptCount === 0 ? "Add prompts before launching" : "Launch run (Ctrl+Shift+R)"}
+        title={
+          promptCount === 0 ? "Agregá prompts antes de lanzar" : "Lanzar ejecución (Ctrl+Shift+R)"
+        }
       >
         <PlayIcon className="size-4" />
-        Launch Run
+        Lanzar ejecución
       </Button>
 
       <RunLauncherDialog

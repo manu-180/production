@@ -54,16 +54,16 @@ function formatRelative(isoDate: string | null): string {
   const diff = new Date(isoDate).getTime() - Date.now();
   const abs = Math.abs(diff);
 
-  if (abs < 60_000) return diff > 0 ? "in less than a minute" : "just now";
+  if (abs < 60_000) return diff > 0 ? "en menos de un minuto" : "hace un momento";
 
   const minutes = Math.round(abs / 60_000);
-  if (minutes < 60) return diff > 0 ? `in ${minutes}m` : `${minutes}m ago`;
+  if (minutes < 60) return diff > 0 ? `en ${minutes}m` : `hace ${minutes}m`;
 
   const hours = Math.round(abs / 3_600_000);
-  if (hours < 24) return diff > 0 ? `in ${hours}h` : `${hours}h ago`;
+  if (hours < 24) return diff > 0 ? `en ${hours}h` : `hace ${hours}h`;
 
   const days = Math.round(abs / 86_400_000);
-  return diff > 0 ? `in ${days}d` : `${days}d ago`;
+  return diff > 0 ? `en ${days}d` : `hace ${days}d`;
 }
 
 /**
@@ -73,29 +73,29 @@ function formatRelative(isoDate: string | null): string {
 function describeCron(expr: string): string {
   if (!expr.trim()) return "";
   const parsed = parseCron(expr);
-  if (parsed instanceof Error) return "invalid expression";
+  if (parsed instanceof Error) return "expresión inválida";
 
   const parts = expr.trim().split(/\s+/);
   const [min, hour, dom, month, dow] = parts as [string, string, string, string, string];
 
   // Simple cases
-  if (expr === "* * * * *") return "every minute";
+  if (expr === "* * * * *") return "cada minuto";
   if (min !== "*" && hour !== "*" && dom === "*" && month === "*" && dow === "*") {
-    return `daily at ${hour.padStart(2, "0")}:${min.padStart(2, "0")} UTC`;
+    return `diario a las ${hour.padStart(2, "0")}:${min.padStart(2, "0")} UTC`;
   }
   if (min !== "*" && hour !== "*" && dom === "*" && month === "*" && dow !== "*") {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const days = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
     const dayNames = dow
       .split(",")
       .map((d) => days[Number(d)] ?? d)
       .join(", ");
-    return `${dayNames} at ${hour.padStart(2, "0")}:${min.padStart(2, "0")} UTC`;
+    return `${dayNames} a las ${hour.padStart(2, "0")}:${min.padStart(2, "0")} UTC`;
   }
   if (min.startsWith("*/")) {
-    return `every ${min.slice(2)} minutes`;
+    return `cada ${min.slice(2)} minutos`;
   }
   if (hour.startsWith("*/")) {
-    return `every ${hour.slice(2)} hours`;
+    return `cada ${hour.slice(2)} horas`;
   }
 
   return expr;
@@ -104,11 +104,11 @@ function describeCron(expr: string): string {
 function computeNextRun(cronExpr: string): string {
   if (!cronExpr.trim()) return "";
   const parsed = parseCron(cronExpr);
-  if (parsed instanceof Error) return "invalid expression";
+  if (parsed instanceof Error) return "expresión inválida";
   try {
     return getNextRun(parsed, new Date()).toLocaleString();
   } catch {
-    return "unable to compute";
+    return "no se pudo calcular";
   }
 }
 
@@ -129,22 +129,26 @@ function DeleteDialog({ schedule, onConfirm, isPending }: DeleteDialogProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="ghost" size="icon-sm" aria-label={`Delete schedule ${schedule.name}`} />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Eliminar programación ${schedule.name}`}
+          />
         }
       >
         <Trash2Icon className="size-3.5 text-destructive" aria-hidden="true" />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete schedule</DialogTitle>
+          <DialogTitle>Eliminar programación</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Are you sure you want to delete{" "}
-          <span className="font-medium text-foreground">{schedule.name}</span>? This cannot be
-          undone.
+          ¿Estás seguro de que querés eliminar{" "}
+          <span className="font-medium text-foreground">{schedule.name}</span>? Esta acción no se
+          puede deshacer.
         </p>
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <DialogClose render={<Button variant="outline" />}>Cancelar</DialogClose>
           <Button
             variant="destructive"
             disabled={isPending}
@@ -153,7 +157,7 @@ function DeleteDialog({ schedule, onConfirm, isPending }: DeleteDialogProps) {
               setOpen(false);
             }}
           >
-            {isPending ? "Deleting…" : "Delete"}
+            {isPending ? "Eliminando…" : "Eliminar"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -237,12 +241,12 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
     >
       {/* Name */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="sched-name">Name</Label>
+        <Label htmlFor="sched-name">Nombre</Label>
         <Input
           id="sched-name"
-          placeholder="Daily backup"
+          placeholder="Backup diario"
           aria-invalid={errors.name !== undefined}
-          {...register("name", { required: "Name is required", maxLength: 100 })}
+          {...register("name", { required: "El nombre es obligatorio", maxLength: 100 })}
         />
         {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
       </div>
@@ -254,9 +258,9 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
           id="sched-plan"
           className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           aria-invalid={errors.plan_id !== undefined}
-          {...register("plan_id", { required: "Plan is required" })}
+          {...register("plan_id", { required: "El plan es obligatorio" })}
         >
-          <option value="">Select a plan…</option>
+          <option value="">Seleccioná un plan…</option>
           {allPlans.map((plan) => (
             <option key={plan.id} value={plan.id}>
               {plan.name}
@@ -268,37 +272,38 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
 
       {/* Cron expression */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="sched-cron">Cron Expression</Label>
+        <Label htmlFor="sched-cron">Expresión cron</Label>
         <Input
           id="sched-cron"
           placeholder="0 9 * * 1-5"
           spellCheck={false}
           aria-invalid={errors.cron_expression !== undefined}
           {...register("cron_expression", {
-            required: "Cron expression is required",
-            validate: (v) => isValidCron(v) || "Invalid cron expression",
+            required: "La expresión cron es obligatoria",
+            validate: (v) => isValidCron(v) || "Expresión cron inválida",
           })}
         />
         {cronValue && (
           <p className="text-xs text-muted-foreground">
             {cronDesc}
-            {nextRun && cronDesc !== "invalid expression" && ` — next: ${nextRun}`}
+            {nextRun && cronDesc !== "expresión inválida" && ` — próxima: ${nextRun}`}
           </p>
         )}
         {errors.cron_expression && (
           <p className="text-xs text-destructive">{errors.cron_expression.message}</p>
         )}
         <p className="text-xs text-muted-foreground">
-          Examples: <code className="font-mono">0 9 * * *</code> (9am daily),{" "}
-          <code className="font-mono">*/15 * * * *</code> (every 15 min),{" "}
-          <code className="font-mono">0 9 * * 1-5</code> (weekdays 9am)
+          Ejemplos: <code className="font-mono">0 9 * * *</code> (9am diario),{" "}
+          <code className="font-mono">*/15 * * * *</code> (cada 15 min),{" "}
+          <code className="font-mono">0 9 * * 1-5</code> (días hábiles 9am)
         </p>
       </div>
 
       {/* Working directory */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="sched-workdir">
-          Working Directory <span className="font-normal text-muted-foreground">(optional)</span>
+          Directorio de trabajo{" "}
+          <span className="font-normal text-muted-foreground">(opcional)</span>
         </Label>
         <Input
           id="sched-workdir"
@@ -321,7 +326,7 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
           ) : (
             <ChevronDownIcon className="size-3.5" aria-hidden="true" />
           )}
-          Advanced options
+          Opciones avanzadas
         </button>
 
         {showAdvanced && (
@@ -330,10 +335,10 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <Label htmlFor="sched-skip-running" className="cursor-pointer">
-                  Skip if already running
+                  Omitir si ya está en ejecución
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Skip this schedule if the plan is currently running.
+                  Omite esta programación si el plan ya está en ejecución.
                 </p>
               </div>
               <Controller
@@ -352,19 +357,19 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
             {/* Skip if ran recently */}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sched-skip-recent">
-                Skip if ran in last N hours{" "}
-                <span className="font-normal text-muted-foreground">(optional)</span>
+                Omitir si se ejecutó en las últimas N horas{" "}
+                <span className="font-normal text-muted-foreground">(opcional)</span>
               </Label>
               <Input
                 id="sched-skip-recent"
                 type="number"
                 min={1}
                 max={168}
-                placeholder="e.g. 4"
+                placeholder="ej. 4"
                 className="w-32"
                 {...register("skip_if_recent_hours", {
-                  min: { value: 1, message: "Must be at least 1" },
-                  max: { value: 168, message: "Must be at most 168" },
+                  min: { value: 1, message: "Debe ser al menos 1" },
+                  max: { value: 168, message: "Debe ser como máximo 168" },
                 })}
               />
               {errors.skip_if_recent_hours && (
@@ -375,16 +380,16 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
             {/* Quiet hours */}
             <div className="flex flex-col gap-1.5">
               <Label>
-                Quiet hours{" "}
-                <span className="font-normal text-muted-foreground">(optional, UTC)</span>
+                Horas de silencio{" "}
+                <span className="font-normal text-muted-foreground">(opcional, UTC)</span>
               </Label>
               <div className="flex items-center gap-2">
                 <select
                   className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  aria-label="Quiet hours start"
+                  aria-label="Inicio de horas de silencio"
                   {...register("quiet_hours_start")}
                 >
-                  <option value="">Start (hour)</option>
+                  <option value="">Inicio (hora)</option>
                   {Array.from({ length: 24 }, (_, i) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: static ordered list of 24 hours, never reordered
                     <option key={i} value={i}>
@@ -392,13 +397,13 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
                     </option>
                   ))}
                 </select>
-                <span className="text-sm text-muted-foreground">to</span>
+                <span className="text-sm text-muted-foreground">hasta</span>
                 <select
                   className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  aria-label="Quiet hours end"
+                  aria-label="Fin de horas de silencio"
                   {...register("quiet_hours_end")}
                 >
-                  <option value="">End (hour)</option>
+                  <option value="">Fin (hora)</option>
                   {Array.from({ length: 24 }, (_, i) => (
                     // biome-ignore lint/suspicious/noArrayIndexKey: static ordered list of 24 hours, never reordered
                     <option key={i} value={i}>
@@ -408,7 +413,7 @@ function ScheduleForm({ defaultValues, onSubmit }: ScheduleFormProps) {
                 </select>
               </div>
               <p className="text-xs text-muted-foreground">
-                The schedule will not fire during these hours (UTC).
+                La programación no se ejecutará durante estas horas (UTC).
               </p>
             </div>
           </div>
@@ -436,17 +441,17 @@ function CreateScheduleDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button />}>
         <PlusIcon aria-hidden="true" />
-        New Schedule
+        Nueva Programación
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Schedule</DialogTitle>
+          <DialogTitle>Nueva Programación</DialogTitle>
         </DialogHeader>
         <ScheduleForm onSubmit={handleSubmit} />
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <DialogClose render={<Button variant="outline" />}>Cancelar</DialogClose>
           <Button type="submit" form="schedule-form" disabled={create.isPending}>
-            {create.isPending ? "Creating…" : "Create"}
+            {create.isPending ? "Creando…" : "Crear"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -487,20 +492,24 @@ function EditScheduleDialog({ schedule }: EditScheduleDialogProps) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="ghost" size="icon-sm" aria-label={`Edit schedule ${schedule.name}`} />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Editar programación ${schedule.name}`}
+          />
         }
       >
         <PencilIcon className="size-3.5" aria-hidden="true" />
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit Schedule</DialogTitle>
+          <DialogTitle>Editar Programación</DialogTitle>
         </DialogHeader>
         <ScheduleForm defaultValues={defaultValues} onSubmit={handleSubmit} />
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+          <DialogClose render={<Button variant="outline" />}>Cancelar</DialogClose>
           <Button type="submit" form="schedule-form" disabled={update.isPending}>
-            {update.isPending ? "Saving…" : "Save"}
+            {update.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -558,7 +567,7 @@ function ScheduleRow({ schedule }: ScheduleRowProps) {
           checked={schedule.enabled}
           onCheckedChange={handleToggle}
           disabled={toggle.isPending}
-          aria-label={schedule.enabled ? "Disable schedule" : "Enable schedule"}
+          aria-label={schedule.enabled ? "Desactivar programación" : "Activar programación"}
         />
       </TableCell>
       <TableCell>
@@ -588,9 +597,9 @@ export default function SchedulePage() {
       {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Schedules</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Programaciones</h1>
           <p className="text-sm text-muted-foreground">
-            Automate your plan runs on a cron schedule.
+            Automatizá las ejecuciones de tus planes con una programación cron.
           </p>
         </div>
         <CreateScheduleDialog />
@@ -599,13 +608,13 @@ export default function SchedulePage() {
       {/* Error state */}
       {isError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          Failed to load schedules.{" "}
+          Error al cargar las programaciones.{" "}
           <button
             type="button"
             onClick={() => refetch()}
             className="underline underline-offset-2 hover:no-underline"
           >
-            Try again
+            Intentar de nuevo
           </button>
         </div>
       )}
@@ -615,12 +624,12 @@ export default function SchedulePage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
+              <TableHead>Nombre</TableHead>
               <TableHead>Plan</TableHead>
               <TableHead>Cron</TableHead>
-              <TableHead>Next Run</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[80px]">Actions</TableHead>
+              <TableHead>Próxima ejecución</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="w-[80px]">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -666,9 +675,9 @@ export default function SchedulePage() {
                       />
                     </div>
                     <div>
-                      <p className="font-medium text-foreground">No schedules yet</p>
+                      <p className="font-medium text-foreground">Sin programaciones aún</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Create one to automate your plan runs.
+                        Creá una para automatizar las ejecuciones de tus planes.
                       </p>
                     </div>
                   </div>

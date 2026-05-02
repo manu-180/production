@@ -12,7 +12,7 @@ const SETTINGS_NAV = [
   },
   {
     href: "/dashboard/settings/notifications",
-    label: "Notifications",
+    label: "Notificaciones",
     match: (p: string) => p.startsWith("/dashboard/settings/notifications"),
   },
 ] as const;

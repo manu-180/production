@@ -39,7 +39,7 @@ export function OfflineBanner() {
       aria-live="polite"
     >
       <WifiOff className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
-      <span>You're offline — viewing cached data</span>
+      <span>Estás sin conexión — viendo datos en caché</span>
     </div>
   );
 }

@@ -41,9 +41,9 @@ export function PlansFilterBar({
             type="search"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search plans..."
+            placeholder="Buscar planes…"
             className="pl-8"
-            aria-label="Search plans"
+            aria-label="Buscar planes"
           />
         </div>
 
@@ -57,7 +57,7 @@ export function PlansFilterBar({
             <select
               value={tag ?? ""}
               onChange={(e) => onTagChange(e.target.value || undefined)}
-              aria-label="Filter by tag"
+              aria-label="Filtrar por etiqueta"
               className={cn(
                 "h-8 appearance-none rounded-lg border border-input bg-transparent pl-8 pr-8 text-sm transition-colors outline-none",
                 "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -65,7 +65,7 @@ export function PlansFilterBar({
                 tag ? "text-foreground" : "text-muted-foreground",
               )}
             >
-              <option value="">All tags</option>
+              <option value="">Todas las etiquetas</option>
               {availableTags.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -80,15 +80,15 @@ export function PlansFilterBar({
           <select
             value={sort}
             onChange={(e) => onSortChange(e.target.value as "created" | "updated")}
-            aria-label="Sort plans by"
+            aria-label="Ordenar planes por"
             className={cn(
               "h-8 appearance-none rounded-lg border border-input bg-transparent px-2.5 pr-8 text-sm transition-colors outline-none",
               "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
               "text-muted-foreground",
             )}
           >
-            <option value="updated">Last updated</option>
-            <option value="created">Created</option>
+            <option value="updated">Último actualizado</option>
+            <option value="created">Creado</option>
           </select>
         </div>
 
@@ -101,18 +101,18 @@ export function PlansFilterBar({
               onSearchChange("");
               onTagChange(undefined);
             }}
-            aria-label="Clear all filters"
+            aria-label="Limpiar todos los filtros"
             className="gap-1 text-muted-foreground"
           >
             <XIcon className="size-3.5" aria-hidden="true" />
-            Clear
+            Limpiar
           </Button>
         )}
 
         {/* Count */}
         {totalCount !== undefined && (
           <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-            {totalCount} {totalCount === 1 ? "plan" : "plans"}
+            {totalCount} {totalCount === 1 ? "plan" : "planes"}
           </span>
         )}
       </div>

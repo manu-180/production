@@ -1,13 +1,13 @@
 "use client";
-import type { Run } from "@conductor/db";
-import { ChevronRightIcon } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatCostUsd, formatDuration } from "@/lib/ui/format";
-import { type RunStatus, runStatusInfo, TONE_CLASSES } from "@/lib/ui/status";
+import { type RunStatus, TONE_CLASSES, runStatusInfo } from "@/lib/ui/status";
 import { cn } from "@/lib/utils";
+import type { Run } from "@conductor/db";
+import { ChevronRightIcon } from "lucide-react";
+import Link from "next/link";
 import { RunStatusBadge } from "../runs/_components/run-status-badge";
 
 interface Props {
@@ -17,10 +17,7 @@ interface Props {
 
 function nowMs(run: Run): number {
   if (run.started_at === null) return 0;
-  const end =
-    run.finished_at !== null
-      ? new Date(run.finished_at).getTime()
-      : Date.now();
+  const end = run.finished_at !== null ? new Date(run.finished_at).getTime() : Date.now();
   return Math.max(0, end - new Date(run.started_at).getTime());
 }
 
@@ -29,7 +26,10 @@ export function ActiveRunCard({ run, totalPrompts }: Props) {
   const info = runStatusInfo(status);
   const tone = TONE_CLASSES[info.tone];
   const current = run.current_prompt_index ?? 0;
-  const pct = totalPrompts && totalPrompts > 0 ? Math.min(100, Math.round((current / totalPrompts) * 100)) : 0;
+  const pct =
+    totalPrompts && totalPrompts > 0
+      ? Math.min(100, Math.round((current / totalPrompts) * 100))
+      : 0;
 
   return (
     <Card className={cn("overflow-hidden border", tone.border)}>
@@ -47,7 +47,9 @@ export function ActiveRunCard({ run, totalPrompts }: Props) {
               <Progress value={pct} className="h-1.5" />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {totalPrompts ? `Prompt ${current + 1} of ${totalPrompts}` : `Prompt ${current + 1}`}
+                  {totalPrompts
+                    ? `Prompt ${current + 1} de ${totalPrompts}`
+                    : `Prompt ${current + 1}`}
                 </span>
                 <span>
                   {formatDuration(nowMs(run))} · {formatCostUsd(run.total_cost_usd)}
@@ -62,7 +64,7 @@ export function ActiveRunCard({ run, totalPrompts }: Props) {
             render={<Link href={`/dashboard/runs/${run.id}`} />}
             className="gap-1"
           >
-            View
+            Ver
             <ChevronRightIcon className="size-3" />
           </Button>
         </div>

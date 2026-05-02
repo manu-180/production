@@ -60,9 +60,9 @@ export default function InsightsOverviewPage() {
   const allCancelled = (data?.runsByDay ?? []).reduce((acc, r) => acc + r.cancelled, 0);
 
   const pieData = [
-    { name: "Successful", value: allSuccessful, color: "#10b981" },
-    { name: "Failed", value: allFailed, color: "#ef4444" },
-    { name: "Cancelled", value: allCancelled, color: "#f59e0b" },
+    { name: "Exitosas", value: allSuccessful, color: "#10b981" },
+    { name: "Fallidas", value: allFailed, color: "#ef4444" },
+    { name: "Canceladas", value: allCancelled, color: "#f59e0b" },
   ];
 
   // ── Leaderboard data ─────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ export default function InsightsOverviewPage() {
     <div className="mx-auto max-w-7xl flex flex-col gap-8 pb-10">
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load metrics. Refresh to try again.
+          No se pudieron cargar las métricas. Actualizá la página para intentar de nuevo.
         </div>
       )}
 
@@ -86,33 +86,35 @@ export default function InsightsOverviewPage() {
       <section>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <KpiCard
-            label="Runs (7d)"
+            label="Ejecuciones (7d)"
             value={isLoading ? "—" : runs7d}
-            delta="last 7 days"
+            delta="últimos 7 días"
             icon={Activity}
             tone="info"
             loading={isLoading}
           />
           <KpiCard
-            label="Success rate (7d)"
+            label="Tasa de éxito (7d)"
             value={isLoading ? "—" : successRate7d !== null ? formatPercent(successRate7d) : "—"}
-            delta={total7dFinished > 0 ? `${total7dFinished} finished` : "no finished runs"}
+            delta={
+              total7dFinished > 0 ? `${total7dFinished} finalizadas` : "sin ejecuciones finalizadas"
+            }
             icon={TrendingUp}
             tone={successRate7d === null ? "neutral" : successRate7d >= 0.8 ? "success" : "warning"}
             loading={isLoading}
           />
           <KpiCard
-            label="Avg duration (7d)"
+            label="Duración promedio (7d)"
             value={isLoading ? "—" : formatDuration(avgDuration7d)}
-            delta="per run"
+            delta="por ejecución"
             icon={Clock}
             tone="neutral"
             loading={isLoading}
           />
           <KpiCard
-            label="Total cost (7d)"
+            label="Costo total (7d)"
             value={isLoading ? "—" : formatUsd(cost7d)}
-            delta="estimated"
+            delta="estimado"
             icon={DollarSign}
             tone="neutral"
             loading={isLoading}
@@ -124,7 +126,9 @@ export default function InsightsOverviewPage() {
       <section>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Runs per day (last 30 days)</CardTitle>
+            <CardTitle className="text-base font-medium">
+              Ejecuciones por día (últimos 30 días)
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -140,7 +144,9 @@ export default function InsightsOverviewPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Runs by status (all time)</CardTitle>
+            <CardTitle className="text-base font-medium">
+              Ejecuciones por estado (todo el tiempo)
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? <Skeleton className="h-56 w-full" /> : <PieChart data={pieData} />}
@@ -149,7 +155,7 @@ export default function InsightsOverviewPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Cost breakdown</CardTitle>
+            <CardTitle className="text-base font-medium">Desglose de costos</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -168,7 +174,9 @@ export default function InsightsOverviewPage() {
       <section>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Top plans by run count</CardTitle>
+            <CardTitle className="text-base font-medium">
+              Planes principales por cantidad de ejecuciones
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (

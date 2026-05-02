@@ -13,18 +13,18 @@ async function getClaudeAuthStatus(): Promise<{ label: string; ok: boolean | nul
     });
 
     if (!res.ok) {
-      return { label: "Claude error", ok: false };
+      return { label: "Claude con error", ok: false };
     }
 
     const data: TokenResponse = (await res.json()) as TokenResponse;
 
     if (data.configured === true) {
-      return { label: "Claude connected", ok: true };
+      return { label: "Claude conectado", ok: true };
     }
 
-    return { label: "Claude not configured", ok: null };
+    return { label: "Claude no configurado", ok: null };
   } catch {
-    return { label: "Claude error", ok: false };
+    return { label: "Claude con error", ok: false };
   }
 }
 

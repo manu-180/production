@@ -92,20 +92,20 @@ export function CommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={setOpen}
-      title="Command palette"
-      description="Quick navigation and actions"
+      title="Paleta de comandos"
+      description="Navegación rápida y acciones"
     >
-      <CommandInput placeholder="Type a command or search…" />
+      <CommandInput placeholder="Escribí un comando o buscá…" />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty>Sin resultados.</CommandEmpty>
 
-        <CommandGroup heading="Navigation">
+        <CommandGroup heading="Navegación">
           <CommandItem
             keywords={["home", "overview", "dashboard"]}
             onSelect={() => go("/dashboard")}
           >
             <HomeIcon />
-            Go to Dashboard
+            Ir al Panel
             <CommandShortcut>G H</CommandShortcut>
           </CommandItem>
           <CommandItem
@@ -113,7 +113,7 @@ export function CommandPalette({
             onSelect={() => go("/dashboard/runs")}
           >
             <ActivityIcon />
-            Go to Runs
+            Ir a Ejecuciones
             <CommandShortcut>G R</CommandShortcut>
           </CommandItem>
           <CommandItem
@@ -121,7 +121,7 @@ export function CommandPalette({
             onSelect={() => go("/dashboard/plans")}
           >
             <FileTextIcon />
-            Go to Plans
+            Ir a Planes
             <CommandShortcut>G P</CommandShortcut>
           </CommandItem>
           <CommandItem
@@ -129,21 +129,21 @@ export function CommandPalette({
             onSelect={() => go("/dashboard/templates")}
           >
             <LayoutTemplateIcon />
-            Browse Templates
+            Explorar plantillas
           </CommandItem>
           <CommandItem
             keywords={["schedule", "cron", "recurring"]}
             onSelect={() => go("/dashboard/schedule")}
           >
             <CalendarIcon />
-            Manage Schedules
+            Administrar programaciones
           </CommandItem>
           <CommandItem
             keywords={["settings", "preferences", "config"]}
             onSelect={() => go("/dashboard/settings")}
           >
             <SettingsIcon />
-            Open Settings
+            Abrir configuración
             <CommandShortcut>G S</CommandShortcut>
           </CommandItem>
           <CommandItem
@@ -151,40 +151,40 @@ export function CommandPalette({
             onSelect={() => go("/dashboard/settings/notifications")}
           >
             <BellIcon />
-            Notification Settings
+            Configuración de notificaciones
           </CommandItem>
           <CommandItem
             keywords={["integrations", "connect", "api", "webhooks"]}
             onSelect={() => go("/dashboard/integrations")}
           >
             <ZapIcon />
-            Integrations
+            Integraciones
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="Actions">
+        <CommandGroup heading="Acciones">
           <CommandItem
             keywords={["new", "create", "plan", "add"]}
             onSelect={() => go("/dashboard/plans/new")}
           >
             <PlusIcon />
-            Create new plan
+            Crear nuevo plan
           </CommandItem>
           <CommandItem
             keywords={["shortcuts", "keyboard", "help", "keys"]}
             onSelect={handleShowShortcuts}
           >
             <KeyboardIcon />
-            Show Keyboard Shortcuts
+            Ver atajos de teclado
             <CommandShortcut>?</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
         <CommandSeparator />
 
-        <CommandGroup heading="Theme">
+        <CommandGroup heading="Tema">
           <CommandItem
             keywords={["light", "theme", "mode"]}
             onSelect={() => {
@@ -192,7 +192,7 @@ export function CommandPalette({
               setOpen(false);
             }}
           >
-            Light
+            Claro
           </CommandItem>
           <CommandItem
             keywords={["dark", "theme", "mode"]}
@@ -201,7 +201,7 @@ export function CommandPalette({
               setOpen(false);
             }}
           >
-            Dark
+            Oscuro
           </CommandItem>
           <CommandItem
             keywords={["system", "theme", "auto", "mode"]}
@@ -210,7 +210,7 @@ export function CommandPalette({
               setOpen(false);
             }}
           >
-            System
+            Sistema
           </CommandItem>
         </CommandGroup>
       </CommandList>

@@ -25,49 +25,49 @@ interface NavItem {
 const NAV: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Panel",
     icon: HomeIcon,
     match: (p) => p === "/dashboard",
   },
   {
     href: "/dashboard/runs",
-    label: "Runs",
+    label: "Ejecuciones",
     icon: ActivityIcon,
     match: (p) => p.startsWith("/dashboard/runs"),
   },
   {
     href: "/dashboard/insights",
-    label: "Insights",
+    label: "Perspectivas",
     icon: BarChart2Icon,
     match: (p) => p.startsWith("/dashboard/insights"),
   },
   {
     href: "/dashboard/plans",
-    label: "Plans",
+    label: "Planes",
     icon: FileTextIcon,
     match: (p) => p.startsWith("/dashboard/plans"),
   },
   {
     href: "/dashboard/schedule",
-    label: "Schedules",
+    label: "Programaciones",
     icon: CalendarClockIcon,
     match: (p) => p.startsWith("/dashboard/schedule"),
   },
   {
     href: "/dashboard/templates",
-    label: "Templates",
+    label: "Plantillas",
     icon: LayersIcon,
     match: (p) => p.startsWith("/dashboard/templates"),
   },
   {
     href: "/dashboard/integrations",
-    label: "Integrations",
+    label: "Integraciones",
     icon: LinkIcon,
     match: (p) => p.startsWith("/dashboard/integrations"),
   },
   {
     href: "/dashboard/settings",
-    label: "Settings",
+    label: "Configuración",
     icon: SettingsIcon,
     match: (p) => p.startsWith("/dashboard/settings"),
   },
@@ -95,15 +95,17 @@ export function Sidebar({ className }: { className?: string }) {
           const Icon = item.icon;
           const active = item.match(pathname);
           const getTourAttribute = () => {
-            if (item.label === "Dashboard") return "nav-dashboard";
-            if (item.label === "Runs") return "nav-runs";
-            if (item.label === "Insights") return "nav-insights";
-            if (item.label === "Plans") return "nav-plans";
-            if (item.label === "Schedules") return "nav-schedules";
-            if (item.label === "Templates") return "nav-templates";
-            if (item.label === "Integrations") return "nav-integrations";
-            if (item.label === "Settings") return "nav-settings";
-            return undefined;
+            const map: Record<string, string> = {
+              "/dashboard": "nav-dashboard",
+              "/dashboard/runs": "nav-runs",
+              "/dashboard/insights": "nav-insights",
+              "/dashboard/plans": "nav-plans",
+              "/dashboard/schedule": "nav-schedules",
+              "/dashboard/templates": "nav-templates",
+              "/dashboard/integrations": "nav-integrations",
+              "/dashboard/settings": "nav-settings",
+            };
+            return map[item.href];
           };
           return (
             <Link

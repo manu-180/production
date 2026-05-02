@@ -1,8 +1,8 @@
 "use client";
-import { PauseIcon, PlayIcon, RotateCcwIcon, XCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRunActions } from "@/hooks/use-run-actions";
 import type { RunStatus } from "@/lib/ui/status";
+import { PauseIcon, PlayIcon, RotateCcwIcon, XCircleIcon } from "lucide-react";
 
 export function ControlButtons({
   runId,
@@ -28,7 +28,7 @@ export function ControlButtons({
           disabled={actions.pause.isPending}
           onClick={() => actions.pause.mutate()}
         >
-          <PauseIcon className="size-3.5" /> Pause
+          <PauseIcon className="size-3.5" /> Pausar
         </Button>
       )}
       {canResume && (
@@ -39,7 +39,7 @@ export function ControlButtons({
           disabled={actions.resume.isPending}
           onClick={() => actions.resume.mutate()}
         >
-          <PlayIcon className="size-3.5" /> Resume
+          <PlayIcon className="size-3.5" /> Reanudar
         </Button>
       )}
       {canCancel && (
@@ -49,12 +49,16 @@ export function ControlButtons({
           className="gap-1.5"
           disabled={actions.cancel.isPending}
           onClick={() => {
-            if (window.confirm("Cancel this run? Any in-flight prompt will stop after the current step.")) {
+            if (
+              window.confirm(
+                "¿Cancelar esta ejecución? Cualquier prompt en curso se detendrá después del paso actual.",
+              )
+            ) {
               actions.cancel.mutate();
             }
           }}
         >
-          <XCircleIcon className="size-3.5" /> Cancel
+          <XCircleIcon className="size-3.5" /> Cancelar
         </Button>
       )}
       {canRetry && (
@@ -65,7 +69,7 @@ export function ControlButtons({
           disabled={actions.retry.isPending}
           onClick={() => actions.retry.mutate()}
         >
-          <RotateCcwIcon className="size-3.5" /> Retry
+          <RotateCcwIcon className="size-3.5" /> Reintentar
         </Button>
       )}
     </div>

@@ -10,10 +10,10 @@ export default function RunsListPage() {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">
-          Runs
+          Ejecuciones
         </h1>
         <p className="text-sm text-muted-foreground">
-          Every run you've launched. Filter by status, search by working directory.
+          Todas las ejecuciones que lanzaste. Filtrá por estado, buscá por directorio de trabajo.
         </p>
       </header>
 
@@ -21,10 +21,7 @@ export default function RunsListPage() {
         <RunsFilterBar value={filters} onChange={setFilters} />
       </div>
 
-      <RunsTable
-        filters={{ status: filters.status, limit: 25 }}
-        searchClient={filters.search}
-      />
+      <RunsTable filters={{ status: filters.status, limit: 25 }} searchClient={filters.search} />
     </div>
   );
 }

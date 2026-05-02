@@ -8,23 +8,23 @@ export function ClaudeAuthStatus() {
   const installed = data?.claudeCli.installed ?? false;
   const version = data?.claudeCli.version;
 
-  const tone = isLoading
-    ? "bg-muted-foreground/40"
-    : installed
-      ? "bg-emerald-500"
-      : "bg-rose-500";
+  const tone = isLoading ? "bg-muted-foreground/40" : installed ? "bg-emerald-500" : "bg-rose-500";
 
   const label = isLoading
-    ? "Checking Claude CLI…"
+    ? "Verificando Claude CLI…"
     : installed
-      ? `Claude CLI ${version ?? "ready"}`
-      : "Claude CLI not installed";
+      ? `Claude CLI ${version ?? "listo"}`
+      : "Claude CLI no instalado";
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <button type="button" aria-label={label} className="flex items-center gap-2 text-xs text-muted-foreground">
+          <button
+            type="button"
+            aria-label={label}
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
             <span
               aria-hidden="true"
               className={cn(

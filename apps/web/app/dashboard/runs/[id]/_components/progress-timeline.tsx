@@ -1,9 +1,9 @@
 "use client";
-import { CheckIcon, MinusIcon, PauseIcon, XIcon } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { RunDetailCache } from "@/lib/realtime/event-handlers";
-import { type ExecutionStatus, executionStatusInfo, TONE_CLASSES } from "@/lib/ui/status";
+import { type ExecutionStatus, TONE_CLASSES, executionStatusInfo } from "@/lib/ui/status";
 import { cn } from "@/lib/utils";
+import { CheckIcon, MinusIcon, PauseIcon, XIcon } from "lucide-react";
 
 function NodeIcon({ status }: { status: ExecutionStatus }) {
   if (status === "succeeded") return <CheckIcon className="size-3.5" />;
@@ -25,7 +25,7 @@ export function ProgressTimeline({
   if (run.executions.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-        Waiting for first prompt to start…
+        Esperando que comience el primer prompt…
       </div>
     );
   }
@@ -70,9 +70,7 @@ export function ProgressTimeline({
                 />
                 <TooltipContent side="bottom">
                   <div className="text-xs font-medium">{title}</div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    {info.label}
-                  </div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">{info.label}</div>
                 </TooltipContent>
               </Tooltip>
               {idx < run.executions.length - 1 && (

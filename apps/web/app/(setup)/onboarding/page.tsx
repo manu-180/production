@@ -5,7 +5,7 @@ import { ClaudeTokenStep } from "./_components/claude-token-step";
 import { DoneStep } from "./_components/done-step";
 import { WorkingDirStep } from "./_components/working-dir-step";
 
-const STEP_LABELS = ["Claude Token", "Working Directory", "Done"];
+const STEP_LABELS = ["Token de Claude", "Directorio de Trabajo", "Listo"];
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(0);

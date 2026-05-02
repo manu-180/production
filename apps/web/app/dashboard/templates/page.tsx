@@ -87,17 +87,17 @@ function BuiltinTemplateCard({ template }: { template: BuiltinTemplate }) {
           render={<Link href={`/dashboard/plans/new?template=${template.id}`} />}
           size="sm"
           className="flex-1"
-          aria-label={`Use template: ${template.name}`}
+          aria-label={`Usar plantilla: ${template.name}`}
         >
-          Use Template
+          Usar plantilla
         </Button>
         <Button
           render={<Link href={`/dashboard/templates/${template.id}`} />}
           size="sm"
           variant="outline"
-          aria-label={`Preview template: ${template.name}`}
+          aria-label={`Vista previa de plantilla: ${template.name}`}
         >
-          Preview
+          Vista previa
         </Button>
       </CardFooter>
     </Card>
@@ -145,19 +145,19 @@ function UserTemplateCard({ plan }: { plan: Plan }) {
           render={<Link href={`/dashboard/plans/new?template=${plan.id}`} />}
           size="sm"
           className="flex-1"
-          aria-label={`Use plan as template: ${plan.name}`}
+          aria-label={`Usar plan como plantilla: ${plan.name}`}
         >
           <CopyIcon className="mr-1.5 size-3.5" aria-hidden="true" />
-          Use as Template
+          Usar como plantilla
         </Button>
         <Button
           render={<Link href={`/dashboard/plans/${plan.id}`} />}
           size="sm"
           variant="outline"
-          aria-label={`Edit template plan: ${plan.name}`}
+          aria-label={`Editar plan de plantilla: ${plan.name}`}
         >
           <PencilIcon className="mr-1.5 size-3.5" aria-hidden="true" />
-          Edit
+          Editar
         </Button>
       </CardFooter>
     </Card>
@@ -233,8 +233,8 @@ export default function TemplatesPage() {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
       {/* Page header */}
       <header>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Templates</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Ready-made plans to get started fast.</p>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">Plantillas</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Planes listos para empezar rápido.</p>
       </header>
 
       {/* Built-in templates */}
@@ -243,11 +243,11 @@ export default function TemplatesPage() {
           id="builtin-templates-heading"
           className="mb-4 font-heading text-lg font-semibold tracking-tight"
         >
-          Built-in Templates
+          Plantillas integradas
         </h2>
         <div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Built-in templates"
+          aria-label="Plantillas integradas"
         >
           {BUILTIN_TEMPLATES.map((template) => (
             <BuiltinTemplateCard key={template.id} template={template} />
@@ -264,19 +264,19 @@ export default function TemplatesPage() {
               id="my-templates-heading"
               className="mb-4 font-heading text-lg font-semibold tracking-tight"
             >
-              My Templates
+              Mis Plantillas
             </h2>
 
             {/* Error state */}
             {userTemplates.isError && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                Failed to load your templates.{" "}
+                Error al cargar tus plantillas.{" "}
                 <button
                   type="button"
                   onClick={() => userTemplates.refetch()}
                   className="underline underline-offset-2 hover:no-underline"
                 >
-                  Try again
+                  Intentar de nuevo
                 </button>
               </div>
             )}
@@ -285,7 +285,7 @@ export default function TemplatesPage() {
             {isUserTemplatesLoading && (
               <div
                 className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                aria-label="Loading your templates"
+                aria-label="Cargando tus plantillas"
                 aria-busy="true"
               >
                 {Array.from({ length: SKELETON_COUNT }).map((_, i) => (
@@ -299,7 +299,7 @@ export default function TemplatesPage() {
             {!isUserTemplatesLoading && allUserTemplates.length > 0 && (
               <div
                 className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                aria-label="Your templates"
+                aria-label="Tus plantillas"
               >
                 {allUserTemplates.map((plan) => (
                   <UserTemplateCard key={plan.id} plan={plan} />
@@ -311,7 +311,7 @@ export default function TemplatesPage() {
             {userTemplates.isFetchingNextPage && (
               <div
                 className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                aria-label="Loading more templates"
+                aria-label="Cargando más plantillas"
                 aria-busy="true"
               >
                 {Array.from({ length: 3 }).map((_, i) => (

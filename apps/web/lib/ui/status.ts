@@ -1,13 +1,7 @@
 /** Centralized status → tone/label/pulse mapping. Used by badges, timeline, headers. */
 
 export type StatusTone = "neutral" | "info" | "success" | "warning" | "danger";
-export type RunStatus =
-  | "queued"
-  | "running"
-  | "paused"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type RunStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled";
 export type ExecutionStatus =
   | "pending"
   | "running"
@@ -26,17 +20,17 @@ export interface StatusInfo {
 export function runStatusInfo(status: RunStatus): StatusInfo {
   switch (status) {
     case "queued":
-      return { label: "Queued", tone: "neutral", pulse: false };
+      return { label: "En cola", tone: "neutral", pulse: false };
     case "running":
-      return { label: "Running", tone: "info", pulse: true };
+      return { label: "Ejecutando", tone: "info", pulse: true };
     case "paused":
-      return { label: "Paused", tone: "warning", pulse: false };
+      return { label: "Pausado", tone: "warning", pulse: false };
     case "completed":
-      return { label: "Completed", tone: "success", pulse: false };
+      return { label: "Completado", tone: "success", pulse: false };
     case "failed":
-      return { label: "Failed", tone: "danger", pulse: false };
+      return { label: "Fallido", tone: "danger", pulse: false };
     case "cancelled":
-      return { label: "Cancelled", tone: "danger", pulse: false };
+      return { label: "Cancelado", tone: "danger", pulse: false };
     default: {
       const _exhaustive: never = status;
       return { label: String(_exhaustive), tone: "neutral", pulse: false };
@@ -47,19 +41,19 @@ export function runStatusInfo(status: RunStatus): StatusInfo {
 export function executionStatusInfo(status: ExecutionStatus): StatusInfo {
   switch (status) {
     case "pending":
-      return { label: "Pending", tone: "neutral", pulse: false };
+      return { label: "Pendiente", tone: "neutral", pulse: false };
     case "running":
-      return { label: "Running", tone: "info", pulse: true };
+      return { label: "Ejecutando", tone: "info", pulse: true };
     case "succeeded":
-      return { label: "Succeeded", tone: "success", pulse: false };
+      return { label: "Exitoso", tone: "success", pulse: false };
     case "failed":
-      return { label: "Failed", tone: "danger", pulse: false };
+      return { label: "Fallido", tone: "danger", pulse: false };
     case "skipped":
-      return { label: "Skipped", tone: "neutral", pulse: false };
+      return { label: "Omitido", tone: "neutral", pulse: false };
     case "rolled_back":
-      return { label: "Rolled back", tone: "warning", pulse: false };
+      return { label: "Revertido", tone: "warning", pulse: false };
     case "awaiting_approval":
-      return { label: "Awaiting approval", tone: "warning", pulse: true };
+      return { label: "Esperando aprobación", tone: "warning", pulse: true };
     default: {
       const _exhaustive: never = status;
       return { label: String(_exhaustive), tone: "neutral", pulse: false };

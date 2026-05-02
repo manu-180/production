@@ -14,12 +14,12 @@ const STATUS_STYLES: Record<RunStatus, string> = {
 };
 
 const STATUS_LABEL: Record<RunStatus, string> = {
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  running: "Running",
-  queued: "Queued",
-  paused: "Paused",
+  completed: "Completada",
+  failed: "Fallida",
+  cancelled: "Cancelada",
+  running: "En ejecución",
+  queued: "En cola",
+  paused: "Pausada",
 };
 
 interface RunStatusBadgeProps {

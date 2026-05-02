@@ -147,7 +147,7 @@ export default function NewPlanPage() {
         const parsed = await parseFiles(all);
         setParsedPrompts(parsed);
       } catch {
-        toast.error("Failed to parse markdown files");
+        toast.error("Error al analizar los archivos markdown");
       } finally {
         setIsParsing(false);
       }
@@ -169,7 +169,7 @@ export default function NewPlanPage() {
         const parsed = await parseFiles(next);
         setParsedPrompts(parsed);
       } catch {
-        toast.error("Failed to re-parse files");
+        toast.error("Error al volver a analizar los archivos");
       } finally {
         setIsParsing(false);
       }
@@ -184,14 +184,14 @@ export default function NewPlanPage() {
   const handleCreateBlank = useCallback(async () => {
     const name = blankName.trim();
     if (!name) {
-      toast.error("Plan name is required");
+      toast.error("El nombre del plan es obligatorio");
       return;
     }
     createPlan.mutate(
       { name, description: blankDescription.trim() || undefined },
       {
         onSuccess: (plan) => {
-          toast.success("Plan created");
+          toast.success("Plan creado");
           router.push(`/dashboard/plans/${plan.id}`);
         },
       },
@@ -201,11 +201,11 @@ export default function NewPlanPage() {
   const handleCreateFromUpload = useCallback(async () => {
     const name = uploadName.trim();
     if (!name) {
-      toast.error("Plan name is required");
+      toast.error("El nombre del plan es obligatorio");
       return;
     }
     if (uploadFiles.length === 0) {
-      toast.error("Upload at least one .md file");
+      toast.error("Subí al menos un archivo .md");
       return;
     }
 
@@ -216,7 +216,7 @@ export default function NewPlanPage() {
         prompts = await parseFiles(uploadFiles);
         setParsedPrompts(prompts);
       } catch {
-        toast.error("Failed to parse uploaded files");
+        toast.error("Error al analizar los archivos subidos");
         setIsParsing(false);
         return;
       }
@@ -236,7 +236,7 @@ export default function NewPlanPage() {
       },
       {
         onSuccess: (plan) => {
-          toast.success(`Plan created with ${prompts.length} prompts`);
+          toast.success(`Plan creado con ${prompts.length} prompts`);
           router.push(`/dashboard/plans/${plan.id}`);
         },
       },
@@ -246,11 +246,11 @@ export default function NewPlanPage() {
   const handleCreateFromTemplate = useCallback(() => {
     const name = templateName.trim();
     if (!name) {
-      toast.error("Plan name is required");
+      toast.error("El nombre del plan es obligatorio");
       return;
     }
     if (!selectedTemplate) {
-      toast.error("Select a template first");
+      toast.error("Seleccioná una plantilla primero");
       return;
     }
 
@@ -268,7 +268,7 @@ export default function NewPlanPage() {
       },
       {
         onSuccess: (plan) => {
-          toast.success("Plan created from template");
+          toast.success("Plan creado desde plantilla");
           router.push(`/dashboard/plans/${plan.id}`);
         },
       },
@@ -289,14 +289,14 @@ export default function NewPlanPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Back to plans"
+            aria-label="Volver a planes"
             render={<Link href="/dashboard/plans" />}
           >
             <ArrowLeftIcon aria-hidden="true" />
           </Button>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">New Plan</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Nuevo Plan</h1>
         </div>
-        <p className="text-sm text-muted-foreground pl-9">Choose how you want to get started.</p>
+        <p className="text-sm text-muted-foreground pl-9">Elegí cómo querés empezar.</p>
       </div>
 
       {/* Mode selector tabs (mobile: stacked; desktop: 3 cols) */}
@@ -313,17 +313,17 @@ export default function NewPlanPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") setMode("blank");
           }}
-          aria-label="Start with a blank plan"
+          aria-label="Empezar con un plan en blanco"
         >
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
                 <PlusIcon className="size-4 text-muted-foreground" aria-hidden="true" />
               </div>
-              <CardTitle>Start blank</CardTitle>
+              <CardTitle>Empezar en blanco</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Create an empty plan and add prompts manually in the editor.
+              Creá un plan vacío y agregá prompts manualmente en el editor.
             </p>
           </CardHeader>
 
@@ -336,7 +336,7 @@ export default function NewPlanPage() {
           >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="blank-name">
-                Plan name{" "}
+                Nombre del plan{" "}
                 <span aria-hidden="true" className="text-destructive">
                   *
                 </span>
@@ -345,7 +345,7 @@ export default function NewPlanPage() {
                 id="blank-name"
                 value={blankName}
                 onChange={(e) => setBlankName(e.target.value)}
-                placeholder="e.g. Code review pipeline"
+                placeholder="ej. Pipeline de revisión de código"
                 aria-required="true"
                 disabled={mode !== "blank" || isPending}
                 onKeyDown={(e) => {
@@ -354,12 +354,12 @@ export default function NewPlanPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="blank-description">Description</Label>
+              <Label htmlFor="blank-description">Descripción</Label>
               <Textarea
                 id="blank-description"
                 value={blankDescription}
                 onChange={(e) => setBlankDescription(e.target.value)}
-                placeholder="What does this plan do?"
+                placeholder="¿Qué hace este plan?"
                 rows={2}
                 disabled={mode !== "blank" || isPending}
               />
@@ -367,7 +367,7 @@ export default function NewPlanPage() {
             <Button
               onClick={handleCreateBlank}
               disabled={mode !== "blank" || !blankName.trim() || isPending}
-              aria-label="Create blank plan"
+              aria-label="Crear plan en blanco"
               className="w-full"
             >
               {createPlan.isPending && mode === "blank" ? (
@@ -375,7 +375,7 @@ export default function NewPlanPage() {
               ) : (
                 <PlusIcon aria-hidden="true" />
               )}
-              Create Plan
+              Crear Plan
             </Button>
           </CardContent>
         </Card>
@@ -392,18 +392,19 @@ export default function NewPlanPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") setMode("upload");
           }}
-          aria-label="Create a plan by uploading markdown files"
+          aria-label="Crear un plan subiendo archivos markdown"
         >
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
                 <FileUpIcon className="size-4 text-muted-foreground" aria-hidden="true" />
               </div>
-              <CardTitle>Upload files</CardTitle>
+              <CardTitle>Subir archivos</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Import existing prompt files. Drop one or more{" "}
-              <code className="rounded bg-muted px-1 text-xs">.md</code> files to create a plan.
+              Importá archivos de prompts existentes. Soltá uno o más{" "}
+              <code className="rounded bg-muted px-1 text-xs">.md</code> archivos para crear un
+              plan.
             </p>
           </CardHeader>
 
@@ -423,7 +424,7 @@ export default function NewPlanPage() {
             {isParsing && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2Icon className="size-3 animate-spin" aria-hidden="true" />
-                Parsing files…
+                Procesando archivos…
               </div>
             )}
 
@@ -432,7 +433,7 @@ export default function NewPlanPage() {
                 <Separator />
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="upload-name">
-                    Plan name{" "}
+                    Nombre del plan{" "}
                     <span aria-hidden="true" className="text-destructive">
                       *
                     </span>
@@ -441,7 +442,7 @@ export default function NewPlanPage() {
                     id="upload-name"
                     value={uploadName}
                     onChange={(e) => setUploadName(e.target.value)}
-                    placeholder="e.g. My prompt pipeline"
+                    placeholder="ej. Mi pipeline de prompts"
                     aria-required="true"
                     disabled={isPending}
                   />
@@ -449,7 +450,7 @@ export default function NewPlanPage() {
                 <Button
                   onClick={handleCreateFromUpload}
                   disabled={!uploadName.trim() || uploadFiles.length === 0 || isPending}
-                  aria-label={`Create plan from ${uploadFiles.length} file${uploadFiles.length === 1 ? "" : "s"}`}
+                  aria-label={`Crear plan desde ${uploadFiles.length} archivo${uploadFiles.length === 1 ? "" : "s"}`}
                   className="w-full"
                 >
                   {isPending && mode === "upload" ? (
@@ -457,7 +458,7 @@ export default function NewPlanPage() {
                   ) : (
                     <FileUpIcon aria-hidden="true" />
                   )}
-                  Create from {uploadFiles.length} file{uploadFiles.length === 1 ? "" : "s"}
+                  Crear desde {uploadFiles.length} archivo{uploadFiles.length === 1 ? "" : "s"}
                 </Button>
               </>
             )}
@@ -476,17 +477,18 @@ export default function NewPlanPage() {
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") setMode("template");
           }}
-          aria-label="Create a plan from a template"
+          aria-label="Crear un plan desde una plantilla"
         >
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
                 <LayersIcon className="size-4 text-muted-foreground" aria-hidden="true" />
               </div>
-              <CardTitle>From template</CardTitle>
+              <CardTitle>Desde plantilla</CardTitle>
             </div>
             <p className="text-sm text-muted-foreground">
-              Start from a pre-built template with ready-made prompts for common workflows.
+              Comenzá desde una plantilla prediseñada con prompts listos para flujos de trabajo
+              comunes.
             </p>
           </CardHeader>
 
@@ -511,7 +513,7 @@ export default function NewPlanPage() {
                 <Separator />
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="template-name">
-                    Plan name{" "}
+                    Nombre del plan{" "}
                     <span aria-hidden="true" className="text-destructive">
                       *
                     </span>
@@ -520,7 +522,7 @@ export default function NewPlanPage() {
                     id="template-name"
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="e.g. My custom pipeline"
+                    placeholder="ej. Mi pipeline personalizado"
                     aria-required="true"
                     disabled={isPending}
                     onKeyDown={(e) => {
@@ -531,7 +533,7 @@ export default function NewPlanPage() {
                 <Button
                   onClick={handleCreateFromTemplate}
                   disabled={!templateName.trim() || !selectedTemplate || isPending}
-                  aria-label={`Create plan from template: ${selectedTemplate.name}`}
+                  aria-label={`Crear plan desde la plantilla: ${selectedTemplate.name}`}
                   className="w-full"
                 >
                   {createPlan.isPending && mode === "template" ? (
@@ -539,7 +541,7 @@ export default function NewPlanPage() {
                   ) : (
                     <LayersIcon aria-hidden="true" />
                   )}
-                  Create from template
+                  Crear desde plantilla
                 </Button>
               </>
             )}

@@ -105,10 +105,10 @@ export default async function TemplateDetailPage({
           variant="ghost"
           size="sm"
           className="-ml-2 text-muted-foreground"
-          aria-label="Back to templates gallery"
+          aria-label="Volver a la galería de plantillas"
         >
           <ArrowLeftIcon className="mr-1.5 size-4" aria-hidden="true" />
-          Templates
+          Plantillas
         </Button>
       </div>
 
@@ -119,7 +119,7 @@ export default async function TemplateDetailPage({
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{template.name}</h1>
             {isBuiltin && (
               <Badge variant="secondary" className="text-xs">
-                Built-in
+                Integrado
               </Badge>
             )}
           </div>
@@ -130,15 +130,15 @@ export default async function TemplateDetailPage({
         <Button
           render={<Link href={`/dashboard/plans/new?template=${template.id}`} />}
           className="shrink-0"
-          aria-label={`Use template: ${template.name}`}
+          aria-label={`Usar plantilla: ${template.name}`}
         >
-          Use This Template
+          Usar esta plantilla
         </Button>
       </div>
 
       {/* Tags */}
       {template.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2" aria-label="Template tags">
+        <div className="flex flex-wrap gap-2" aria-label="Etiquetas de la plantilla">
           {template.tags.map((tag) => (
             <Badge key={tag} variant="outline">
               {tag}
@@ -156,11 +156,11 @@ export default async function TemplateDetailPage({
         </h2>
 
         {promptCount === 0 ? (
-          <p className="text-sm text-muted-foreground">This template has no prompts.</p>
+          <p className="text-sm text-muted-foreground">Esta plantilla no tiene prompts.</p>
         ) : (
           <ol
             className="flex flex-col gap-3"
-            aria-label={`${promptCount} prompts in this template`}
+            aria-label={`${promptCount} prompts en esta plantilla`}
           >
             {template.prompts.map((prompt, i) => {
               const displayTitle = prompt.title ?? prompt.filename ?? `Prompt ${i + 1}`;
@@ -194,13 +194,13 @@ export default async function TemplateDetailPage({
       <Separator />
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {promptCount} prompt{promptCount !== 1 ? "s" : ""} in this template
+          {promptCount} prompt{promptCount !== 1 ? "s" : ""} en esta plantilla
         </p>
         <Button
           render={<Link href={`/dashboard/plans/new?template=${template.id}`} />}
-          aria-label={`Use template: ${template.name}`}
+          aria-label={`Usar plantilla: ${template.name}`}
         >
-          Use This Template
+          Usar esta plantilla
         </Button>
       </div>
     </div>

@@ -23,14 +23,14 @@ interface Props {
 }
 
 const STRATEGY_LABELS: Record<GuardianDecisionRow["strategy"], string> = {
-  rule: "Rule",
-  default: "Default",
+  rule: "Regla",
+  default: "Predeterminada",
   llm: "LLM",
 };
 
 function formatTimestamp(iso: string): string {
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat("es-AR", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -72,16 +72,16 @@ export function DecisionDetailDialog({ decision, runId }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label="View decision details" />}
+        render={<Button variant="ghost" size="icon-sm" aria-label="Ver detalles de la decisión" />}
       >
         <EyeIcon />
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-lg" showCloseButton>
         <DialogHeader>
-          <DialogTitle>Guardian Decision</DialogTitle>
+          <DialogTitle>Decisión del Guardián</DialogTitle>
           <DialogDescription>
-            Full details for decision{" "}
+            Detalles completos de la decisión{" "}
             <span className="font-mono text-xs">{decision.id.slice(0, 8)}&hellip;</span>
           </DialogDescription>
         </DialogHeader>
@@ -91,48 +91,48 @@ export function DecisionDetailDialog({ decision, runId }: Props) {
             {/* Meta row */}
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <StrategyBadge strategy={decision.strategy} />
-              <span>{Math.round(decision.confidence * 100)}% confidence</span>
-              {overridden && <Badge variant="outline">Human reviewed</Badge>}
+              <span>{Math.round(decision.confidence * 100)}% confianza</span>
+              {overridden && <Badge variant="outline">Revisado por humano</Badge>}
               <span className="ml-auto font-mono">{formatTimestamp(decision.createdAt)}</span>
             </div>
 
-            <DetailSection label="Question detected">
+            <DetailSection label="Pregunta detectada">
               {decision.questionDetected || <em className="text-muted-foreground">—</em>}
             </DetailSection>
 
             {decision.contextSnippet !== undefined && decision.contextSnippet !== "" && (
-              <DetailSection label="Context snippet">
+              <DetailSection label="Fragmento de contexto">
                 <span className="font-mono text-xs leading-relaxed whitespace-pre-wrap">
                   {decision.contextSnippet}
                 </span>
               </DetailSection>
             )}
 
-            <DetailSection label="Decision">
+            <DetailSection label="Decisión">
               {decision.decision || <em className="text-muted-foreground">—</em>}
             </DetailSection>
 
-            <DetailSection label="Reasoning">
+            <DetailSection label="Razonamiento">
               {decision.reasoning || <em className="text-muted-foreground">—</em>}
             </DetailSection>
 
             {savedResponse !== "" && (
-              <DetailSection label="Human override response">{savedResponse}</DetailSection>
+              <DetailSection label="Respuesta de anulación humana">{savedResponse}</DetailSection>
             )}
 
             {/* Override form */}
             <div className="grid gap-2 border-t pt-4">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Override Guardian decision
+                Anular decisión del Guardián
               </p>
               <p className="text-xs text-muted-foreground">
-                Submit your own answer to replace the Guardian&apos;s decision.
+                Enviá tu propia respuesta para reemplazar la decisión del Guardián.
               </p>
               <div className="flex gap-2">
                 <Input
                   value={overrideText}
                   onChange={(e) => setOverrideText(e.target.value)}
-                  placeholder="Your decision…"
+                  placeholder="Tu decisión…"
                   disabled={submitting}
                   className="flex-1 text-sm"
                   onKeyDown={(e) => {
@@ -147,7 +147,7 @@ export function DecisionDetailDialog({ decision, runId }: Props) {
                   onClick={() => void handleOverride()}
                   disabled={submitting || !overrideText.trim()}
                 >
-                  {submitting ? "Saving…" : "Override"}
+                  {submitting ? "Guardando…" : "Anular"}
                 </Button>
               </div>
             </div>

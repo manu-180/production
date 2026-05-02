@@ -188,10 +188,12 @@ export default function RunsInsightsPage() {
     <div className="mx-auto max-w-7xl flex flex-col gap-6 pb-10">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Run Analytics</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            Analíticas de Ejecuciones
+          </h1>
           {!isLoading && (
             <p className="mt-1 text-sm text-muted-foreground">
-              {allRuns.length} run{allRuns.length !== 1 ? "s" : ""} total
+              {allRuns.length} ejecución{allRuns.length !== 1 ? "es" : ""} en total
             </p>
           )}
         </div>
@@ -199,13 +201,14 @@ export default function RunsInsightsPage() {
 
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load run data. Refresh to try again.
+          No se pudieron cargar los datos de ejecuciones. Actualizá la página para intentar de
+          nuevo.
         </div>
       )}
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">All runs</CardTitle>
+          <CardTitle className="text-base font-medium">Todas las ejecuciones</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -216,7 +219,9 @@ export default function RunsInsightsPage() {
               ))}
             </div>
           ) : allRuns.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">No runs found.</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              No se encontraron ejecuciones.
+            </div>
           ) : (
             <>
               <Table>
@@ -224,24 +229,24 @@ export default function RunsInsightsPage() {
                   <TableRow>
                     <SortableHeader
                       column="status"
-                      label="Status"
+                      label="Estado"
                       sort={sort}
                       onSort={handleSort}
                     />
                     <SortableHeader column="plan" label="Plan" sort={sort} onSort={handleSort} />
                     <SortableHeader
                       column="started_at"
-                      label="Started"
+                      label="Iniciada"
                       sort={sort}
                       onSort={handleSort}
                     />
                     <SortableHeader
                       column="duration"
-                      label="Duration"
+                      label="Duración"
                       sort={sort}
                       onSort={handleSort}
                     />
-                    <SortableHeader column="cost" label="Cost" sort={sort} onSort={handleSort} />
+                    <SortableHeader column="cost" label="Costo" sort={sort} onSort={handleSort} />
                     <SortableHeader
                       column="tokens"
                       label="Tokens"
@@ -291,7 +296,7 @@ export default function RunsInsightsPage() {
               {totalPages > 1 && (
                 <div className="flex items-center justify-between border-t px-4 py-3">
                   <span className="text-xs text-muted-foreground">
-                    Page {page + 1} of {totalPages} ({allRuns.length} total)
+                    Página {page + 1} de {totalPages} ({allRuns.length} en total)
                   </span>
                   <div className="flex gap-2">
                     <button
@@ -300,7 +305,7 @@ export default function RunsInsightsPage() {
                       onClick={() => setPage((p) => p - 1)}
                       className="rounded-md border px-3 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Previous
+                      Anterior
                     </button>
                     <button
                       type="button"
@@ -308,7 +313,7 @@ export default function RunsInsightsPage() {
                       onClick={() => setPage((p) => p + 1)}
                       className="rounded-md border px-3 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      Next
+                      Siguiente
                     </button>
                   </div>
                 </div>

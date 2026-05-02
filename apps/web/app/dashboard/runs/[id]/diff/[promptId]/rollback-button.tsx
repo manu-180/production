@@ -38,13 +38,13 @@ export function RollbackButton({ runId, promptId, sha }: RollbackButtonProps): R
       });
       const body = await res.json();
       if (!res.ok) {
-        setError(body.error ?? `Rollback failed (${res.status})`);
+        setError(body.error ?? `La reversión falló (${res.status})`);
         return;
       }
       setOpen(false);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
       setLoading(false);
     }
@@ -54,22 +54,22 @@ export function RollbackButton({ runId, promptId, sha }: RollbackButtonProps): R
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="outline" size="sm" />}>
         <Undo2 className="w-4 h-4 mr-2" />
-        Rollback to here
+        Revertir hasta acá
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Rollback this checkpoint?</DialogTitle>
+          <DialogTitle>¿Revertir este punto de control?</DialogTitle>
           <DialogDescription>
-            This creates a new revert commit on the current branch that undoes the changes from
+            Esto crea un nuevo commit de reversión en la rama actual que deshace los cambios del
             prompt <strong>{promptId}</strong> (<code className="text-xs">{sha.slice(0, 8)}</code>).
-            This action is destructive in the sense that your working tree will change. Conflicts
-            may abort the rollback.
+            Esta acción es destructiva en el sentido de que tu árbol de trabajo cambiará. Los
+            conflictos pueden cancelar la reversión.
           </DialogDescription>
         </DialogHeader>
         {error !== null ? <p className="text-sm text-red-600">{error}</p> : null}
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
-            Cancel
+            Cancelar
           </Button>
           <Button onClick={handleRollback} disabled={loading}>
             {loading ? (
@@ -77,7 +77,7 @@ export function RollbackButton({ runId, promptId, sha }: RollbackButtonProps): R
             ) : (
               <Undo2 className="w-4 h-4 mr-2" />
             )}
-            Confirm rollback
+            Confirmar reversión
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -14,21 +14,21 @@ type Props = {
 type SubmitState = "idle" | "loading" | "success" | "error";
 
 const STEPS: { id: string; content: React.ReactNode }[] = [
-  { id: "open-terminal", content: "Open a terminal on this machine" },
+  { id: "open-terminal", content: "Abrí una terminal en esta máquina" },
   {
     id: "run-command",
     content: (
       <>
-        Run:{" "}
+        Ejecutá:{" "}
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.8em]">
           claude setup-token
         </code>
       </>
     ),
   },
-  { id: "oauth-flow", content: "Follow the OAuth flow that opens in your browser" },
-  { id: "copy-token", content: "Copy the long token that appears in the terminal" },
-  { id: "paste-token", content: "Paste it in the field below" },
+  { id: "oauth-flow", content: "Seguí el flujo OAuth que se abre en tu navegador" },
+  { id: "copy-token", content: "Copiá el token largo que aparece en la terminal" },
+  { id: "paste-token", content: "Pegalo en el campo de abajo" },
 ];
 
 export function ClaudeTokenStep({ onComplete }: Props) {
@@ -64,23 +64,23 @@ export function ClaudeTokenStep({ onComplete }: Props) {
         const msg =
           typeof data === "object" && data !== null && "error" in data
             ? String((data as { error: unknown }).error)
-            : "Token validation failed. Make sure you copied the full token.";
+            : "La validación del token falló. Asegurate de haber copiado el token completo.";
         setState("error");
         setErrorMsg(msg);
       }
     } catch {
       setState("error");
-      setErrorMsg("Network error — is the server running?");
+      setErrorMsg("Error de red — ¿está corriendo el servidor?");
     }
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Connect your Claude account</CardTitle>
+        <CardTitle>Conectá tu cuenta de Claude</CardTitle>
         <CardDescription>
-          Conductor needs to connect to your Claude account to run prompts. This uses your existing
-          plan — no extra credits are consumed.
+          Conductor necesita conectarse a tu cuenta de Claude para ejecutar prompts. Usa tu plan
+          existente — no se consumen créditos adicionales.
         </CardDescription>
       </CardHeader>
 
@@ -101,7 +101,7 @@ export function ClaudeTokenStep({ onComplete }: Props) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <Input
             type="password"
-            placeholder="Paste your token here"
+            placeholder="Pegá tu token acá"
             value={token}
             onChange={(e) => {
               setToken(e.target.value);
@@ -125,7 +125,7 @@ export function ClaudeTokenStep({ onComplete }: Props) {
               disabled={!token.trim() || state === "loading"}
               className="w-full"
             >
-              {state === "loading" ? "Validating…" : "Validate & Save"}
+              {state === "loading" ? "Validando…" : "Validar y guardar"}
             </Button>
           ) : (
             <div className="flex flex-col gap-3">
@@ -135,10 +135,10 @@ export function ClaudeTokenStep({ onComplete }: Props) {
                 )}
               >
                 <CheckCircle className="size-4 shrink-0" />
-                <span>Token validated and saved.</span>
+                <span>Token validado y guardado.</span>
               </div>
               <Button type="button" onClick={onComplete} className="w-full">
-                Continue
+                Continuar
                 <ChevronRight className="size-4" />
               </Button>
             </div>

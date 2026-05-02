@@ -61,18 +61,18 @@ export function LintPanel({ content, frontmatter, onApplyFix }: LintPanelProps) 
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Lint
+          Verificar
         </h3>
         {issues.length > 0 && (
           <div className="flex items-center gap-2">
             {errorCount > 0 && (
               <span className="text-xs text-rose-500 tabular-nums">
-                {errorCount} error{errorCount !== 1 ? "s" : ""}
+                {errorCount} error{errorCount !== 1 ? "es" : ""}
               </span>
             )}
             {warnCount > 0 && (
               <span className="text-xs text-amber-500 tabular-nums">
-                {warnCount} warn{warnCount !== 1 ? "s" : ""}
+                {warnCount} advertencia{warnCount !== 1 ? "s" : ""}
               </span>
             )}
           </div>
@@ -83,7 +83,7 @@ export function LintPanel({ content, frontmatter, onApplyFix }: LintPanelProps) 
       {issues.length === 0 && (
         <div className="flex items-center gap-2 text-sm text-emerald-500 py-1">
           <CheckCircle2Icon className="size-4 shrink-0" />
-          <span>No issues found</span>
+          <span>No se encontraron problemas</span>
         </div>
       )}
 
@@ -110,10 +110,10 @@ export function LintPanel({ content, frontmatter, onApplyFix }: LintPanelProps) 
                     type="button"
                     onClick={() => handleFix(issue)}
                     className="shrink-0 flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    title="Apply fix"
+                    title="Aplicar corrección"
                   >
                     <WrenchIcon className="size-3" />
-                    Fix
+                    Corregir
                   </button>
                 )}
                 {fixed && <CheckCircle2Icon className="size-3 shrink-0 text-emerald-500" />}

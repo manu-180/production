@@ -31,7 +31,7 @@ interface ShortcutGroup {
 
 const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
-    heading: "Navigation",
+    heading: "Navegación",
     rows: [
       { key: "G H", label: SHORTCUTS["G H"] },
       { key: "G R", label: SHORTCUTS["G R"] },
@@ -40,7 +40,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
-    heading: "Actions",
+    heading: "Acciones",
     rows: [
       { key: "Cmd+K", label: SHORTCUTS["Cmd+K"] },
       { key: "Cmd+Shift+R", label: SHORTCUTS["Cmd+Shift+R"] },
@@ -105,20 +105,20 @@ export function ShortcutsModal({ open, onOpenChange }: ShortcutsModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader className="sr-only">
-        <DialogTitle>Keyboard shortcuts</DialogTitle>
+        <DialogTitle>Atajos de teclado</DialogTitle>
         <DialogDescription>
-          All available keyboard shortcuts for the Conductor dashboard.
+          Todos los atajos de teclado disponibles en el dashboard de Conductor.
         </DialogDescription>
       </DialogHeader>
       <DialogContent className="sm:max-w-md" showCloseButton>
         <div className="mb-4">
-          <h2 className="font-heading text-base font-medium leading-none">Keyboard shortcuts</h2>
+          <h2 className="font-heading text-base font-medium leading-none">Atajos de teclado</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Press{" "}
+            Presioná{" "}
             <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
               ?
             </kbd>{" "}
-            at any time to show this dialog.
+            en cualquier momento para mostrar este diálogo.
           </p>
         </div>
 

@@ -54,7 +54,7 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
                   <Link
                     href={`/dashboard/plans/${plan.id}`}
                     className="hover:underline focus-visible:underline outline-none"
-                    aria-label={`Open plan: ${plan.name}`}
+                    aria-label={`Abrir plan: ${plan.name}`}
                   >
                     {plan.name}
                   </Link>
@@ -79,7 +79,11 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${plan.name}`} />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Acciones para ${plan.name}`}
+                  />
                 }
               >
                 <MoreHorizontalIcon aria-hidden="true" />
@@ -94,7 +98,7 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
                   }
                 >
                   <PencilIcon aria-hidden="true" />
-                  View / Edit
+                  Ver / Editar
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   render={
@@ -105,7 +109,7 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
                   }
                 >
                   <CopyIcon aria-hidden="true" />
-                  Duplicate
+                  Duplicar
                 </DropdownMenuItem>
                 {onDelete && (
                   <>
@@ -116,7 +120,7 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
                       onClick={() => setConfirmDeleteOpen(true)}
                     >
                       <TrashIcon aria-hidden="true" />
-                      Delete
+                      Eliminar
                     </DropdownMenuItem>
                   </>
                 )}
@@ -158,11 +162,11 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
       <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete plan</DialogTitle>
+            <DialogTitle>Eliminar plan</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong className="text-foreground">{plan.name}</strong>? This action cannot be
-              undone.
+              ¿Estás seguro de que querés eliminar{" "}
+              <strong className="text-foreground">{plan.name}</strong>? Esta acción no se puede
+              deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter showCloseButton>
@@ -172,9 +176,9 @@ export function PlanCard({ plan, onDelete }: PlanCardProps) {
                 setConfirmDeleteOpen(false);
                 onDelete?.();
               }}
-              aria-label={`Confirm delete plan ${plan.name}`}
+              aria-label={`Confirmar eliminación del plan ${plan.name}`}
             >
-              Delete plan
+              Eliminar plan
             </Button>
           </DialogFooter>
         </DialogContent>

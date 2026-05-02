@@ -16,13 +16,13 @@ export default function HomePage() {
         {/* System status */}
         <div className="flex flex-col items-center gap-3">
           <p className="text-xs text-muted-foreground uppercase tracking-widest font-mono">
-            System Status
+            Estado del sistema
           </p>
           <div className="flex flex-wrap gap-2 justify-center">
             <Suspense
               fallback={
                 <div className="text-xs text-muted-foreground font-mono animate-pulse">
-                  Checking…
+                  Verificando…
                 </div>
               }
             >
@@ -31,7 +31,7 @@ export default function HomePage() {
             <Suspense
               fallback={
                 <div className="text-xs text-muted-foreground font-mono animate-pulse">
-                  Checking…
+                  Verificando…
                 </div>
               }
             >

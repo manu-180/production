@@ -142,14 +142,16 @@ export default function AuditLogPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Audit Log</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+            Registro de Auditoría
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Immutable record of all system events.
+            Registro inmutable de todos los eventos del sistema.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1.5">
           <Download className="size-4" />
-          Export CSV
+          Exportar CSV
         </Button>
       </div>
 
@@ -163,13 +165,13 @@ export default function AuditLogPage() {
                 <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
                 <Input
                   className="pl-8 w-52"
-                  placeholder="Search action, resource…"
+                  placeholder="Buscar acción, recurso…"
                   value={qInput}
                   onChange={(e) => setQInput(e.target.value)}
                 />
               </div>
               <Button type="submit" variant="secondary" size="sm">
-                Search
+                Buscar
               </Button>
               {q && (
                 <Button
@@ -182,7 +184,7 @@ export default function AuditLogPage() {
                     resetPage();
                   }}
                 >
-                  Clear
+                  Limpiar
                 </Button>
               )}
             </form>
@@ -195,9 +197,9 @@ export default function AuditLogPage() {
                 setActor(e.target.value as AuditActor | "");
                 resetPage();
               }}
-              aria-label="Filter by actor"
+              aria-label="Filtrar por actor"
             >
-              <option value="">All actors</option>
+              <option value="">Todos los actores</option>
               {ACTORS.map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -213,9 +215,9 @@ export default function AuditLogPage() {
                 setAction(e.target.value);
                 resetPage();
               }}
-              aria-label="Filter by action"
+              aria-label="Filtrar por acción"
             >
-              <option value="">All actions</option>
+              <option value="">Todas las acciones</option>
               {AUDIT_ACTIONS.map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -233,7 +235,7 @@ export default function AuditLogPage() {
                   setFrom(e.target.value);
                   resetPage();
                 }}
-                aria-label="From date"
+                aria-label="Desde fecha"
               />
               <span className="text-muted-foreground text-xs">–</span>
               <Input
@@ -244,14 +246,14 @@ export default function AuditLogPage() {
                   setTo(e.target.value);
                   resetPage();
                 }}
-                aria-label="To date"
+                aria-label="Hasta fecha"
               />
             </div>
 
             {/* Resource type */}
             <Input
               className="w-40"
-              placeholder="Resource type"
+              placeholder="Tipo de recurso"
               value={resourceType}
               onChange={(e) => {
                 setResourceType(e.target.value);
@@ -265,7 +267,7 @@ export default function AuditLogPage() {
       {/* Error */}
       {isError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load audit log. Refresh to try again.
+          No se pudo cargar el registro de auditoría. Actualizá la página para intentar de nuevo.
         </div>
       )}
 
@@ -273,7 +275,7 @@ export default function AuditLogPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-medium">
-            {isLoading ? "Loading…" : `${total.toLocaleString()} events`}
+            {isLoading ? "Cargando…" : `${total.toLocaleString()} eventos`}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -286,7 +288,7 @@ export default function AuditLogPage() {
             </div>
           ) : entries.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              No audit events match the current filters.
+              Ningún evento de auditoría coincide con los filtros actuales.
             </div>
           ) : (
             <Table>
@@ -294,10 +296,10 @@ export default function AuditLogPage() {
                 <TableRow>
                   <TableHead className="w-36">Timestamp</TableHead>
                   <TableHead className="w-24">Actor</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead className="w-28">Resource type</TableHead>
-                  <TableHead className="w-40">Resource ID</TableHead>
-                  <TableHead>Metadata</TableHead>
+                  <TableHead>Acción</TableHead>
+                  <TableHead className="w-28">Tipo de recurso</TableHead>
+                  <TableHead className="w-40">ID de recurso</TableHead>
+                  <TableHead>Metadatos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -337,7 +339,7 @@ export default function AuditLogPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            Page {page + 1} of {totalPages}
+            Página {page + 1} de {totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -346,7 +348,7 @@ export default function AuditLogPage() {
               disabled={page === 0}
               onClick={() => setPage((p) => Math.max(0, p - 1))}
             >
-              Previous
+              Anterior
             </Button>
             <Button
               variant="outline"
@@ -354,7 +356,7 @@ export default function AuditLogPage() {
               disabled={!data?.hasMore}
               onClick={() => setPage((p) => p + 1)}
             >
-              Next
+              Siguiente
             </Button>
           </div>
         </div>

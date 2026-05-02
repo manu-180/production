@@ -77,9 +77,9 @@ export function RunsTable({ filters, searchClient }: Props) {
     return (
       <Card>
         <div className="flex flex-col items-center gap-3 p-12 text-center">
-          <p className="text-sm text-muted-foreground">Failed to load runs.</p>
+          <p className="text-sm text-muted-foreground">No se pudieron cargar las ejecuciones.</p>
           <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-            Retry
+            Intentar de nuevo
           </Button>
         </div>
       </Card>
@@ -90,13 +90,13 @@ export function RunsTable({ filters, searchClient }: Props) {
     return (
       <EmptyState
         type="runs"
-        title={searchClient ? "No runs match your search" : "No runs yet"}
+        title={searchClient ? "Ninguna ejecución coincide con tu búsqueda" : "Sin ejecuciones aún"}
         description={
           searchClient
-            ? "Try a different search term or clear the filter"
-            : "Launch a plan to see your runs here"
+            ? "Probá con otro término o limpiá el filtro"
+            : "Lanzá un plan para ver tus ejecuciones acá"
         }
-        action={{ label: "Browse Plans", href: "/dashboard/plans" }}
+        action={{ label: "Ver planes", href: "/dashboard/plans" }}
       />
     );
   }
@@ -107,11 +107,11 @@ export function RunsTable({ filters, searchClient }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[140px]">Status</TableHead>
-              <TableHead>Working dir</TableHead>
-              <TableHead className="hidden md:table-cell">Started</TableHead>
-              <TableHead className="hidden md:table-cell">Duration</TableHead>
-              <TableHead className="hidden md:table-cell text-right">Cost</TableHead>
+              <TableHead className="w-[140px]">Estado</TableHead>
+              <TableHead>Directorio de trabajo</TableHead>
+              <TableHead className="hidden md:table-cell">Iniciado</TableHead>
+              <TableHead className="hidden md:table-cell">Duración</TableHead>
+              <TableHead className="hidden md:table-cell text-right">Costo</TableHead>
               <TableHead className="w-[40px]" />
             </TableRow>
           </TableHeader>
@@ -143,7 +143,7 @@ export function RunsTable({ filters, searchClient }: Props) {
                   <Link
                     href={`/dashboard/runs/${r.id}`}
                     className="flex items-center justify-center text-muted-foreground"
-                    aria-label="Open run"
+                    aria-label="Abrir ejecución"
                   >
                     <ChevronRightIcon className="size-4" />
                   </Link>
@@ -153,10 +153,10 @@ export function RunsTable({ filters, searchClient }: Props) {
             <TableRow ref={sentinelRef}>
               <TableCell colSpan={6} className="text-center text-xs text-muted-foreground">
                 {query.isFetchingNextPage
-                  ? "Loading more…"
+                  ? "Cargando más…"
                   : query.hasNextPage
-                    ? "Scroll for more"
-                    : `${filtered.length} run${filtered.length === 1 ? "" : "s"}`}
+                    ? "Scrolleá para ver más"
+                    : `${filtered.length} ejecución${filtered.length === 1 ? "" : "es"}`}
               </TableCell>
             </TableRow>
           </TableBody>

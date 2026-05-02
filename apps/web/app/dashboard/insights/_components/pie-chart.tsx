@@ -24,7 +24,7 @@ export function PieChart({ data }: PieChartProps) {
   if (filled.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        No data yet
+        Sin datos todavía
       </div>
     );
   }

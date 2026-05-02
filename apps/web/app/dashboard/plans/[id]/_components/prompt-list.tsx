@@ -59,7 +59,7 @@ function SortablePromptItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const displayTitle = prompt.title ?? prompt.filename ?? "Untitled";
+  const displayTitle = prompt.title ?? prompt.filename ?? "Sin título";
 
   return (
     <div
@@ -87,7 +87,7 @@ function SortablePromptItem({
         {...listeners}
         className="cursor-grab opacity-0 group-hover:opacity-100 transition-opacity shrink-0 p-0.5 rounded hover:text-foreground text-muted-foreground"
         onClick={(e) => e.stopPropagation()}
-        aria-label="Drag to reorder"
+        aria-label="Arrastrar para reordenar"
         tabIndex={-1}
       >
         <GripVerticalIcon className="size-4" />
@@ -110,7 +110,7 @@ function SortablePromptItem({
           onDelete(prompt.id);
         }}
         disabled={isDeleting}
-        aria-label={`Delete prompt: ${displayTitle}`}
+        aria-label={`Eliminar prompt: ${displayTitle}`}
         tabIndex={-1}
       >
         <Trash2Icon className="size-3.5" />
@@ -165,7 +165,7 @@ export function PromptList({ planId, prompts, selectedId, onSelect }: PromptList
           onSelect(newPrompt.id);
         },
         onError: () => {
-          toast.error("Failed to create prompt");
+          toast.error("Error al crear el prompt");
         },
       },
     );
@@ -174,7 +174,7 @@ export function PromptList({ planId, prompts, selectedId, onSelect }: PromptList
   function handleDeletePrompt(promptId: string) {
     deletePrompt.mutate(promptId, {
       onError: () => {
-        toast.error("Failed to delete prompt");
+        toast.error("Error al eliminar el prompt");
       },
     });
   }
@@ -209,7 +209,7 @@ export function PromptList({ planId, prompts, selectedId, onSelect }: PromptList
 
       {localPrompts.length === 0 && (
         <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center">
-          <p className="text-xs text-muted-foreground">No prompts yet</p>
+          <p className="text-xs text-muted-foreground">Sin prompts aún</p>
         </div>
       )}
 
@@ -221,7 +221,7 @@ export function PromptList({ planId, prompts, selectedId, onSelect }: PromptList
         disabled={createPrompt.isPending}
       >
         <PlusIcon className="size-4" />
-        Add prompt
+        Agregar prompt
       </Button>
     </div>
   );

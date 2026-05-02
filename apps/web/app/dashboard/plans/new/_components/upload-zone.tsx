@@ -18,7 +18,7 @@ interface UploadZoneProps {
 export function UploadZone({
   onFiles,
   accept = { "text/markdown": [".md"] },
-  label = "Drop .md files here or click to browse",
+  label = "Arrastrá archivos .md acá o hacé clic para explorar",
   currentFiles = [],
   onRemoveFile,
 }: UploadZoneProps) {
@@ -65,9 +65,11 @@ export function UploadZone({
           />
         </div>
         <div>
-          <p className="text-sm font-medium">{isDragActive ? "Drop files to upload" : label}</p>
+          <p className="text-sm font-medium">
+            {isDragActive ? "Soltá los archivos para subir" : label}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Supports {Object.values(accept).flat().join(", ")} files
+            Soporta archivos {Object.values(accept).flat().join(", ")}
           </p>
         </div>
       </div>
@@ -76,7 +78,7 @@ export function UploadZone({
       {currentFiles.length > 0 && (
         <ul
           className="flex flex-col gap-1.5"
-          aria-label={`${currentFiles.length} file${currentFiles.length === 1 ? "" : "s"} selected`}
+          aria-label={`${currentFiles.length} archivo${currentFiles.length === 1 ? "" : "s"} seleccionado${currentFiles.length === 1 ? "" : "s"}`}
         >
           {currentFiles.map((file, index) => (
             <li
@@ -96,7 +98,7 @@ export function UploadZone({
                   variant="ghost"
                   size="icon-xs"
                   onClick={() => onRemoveFile(index)}
-                  aria-label={`Remove file ${file.name}`}
+                  aria-label={`Eliminar archivo ${file.name}`}
                   className="ml-1 shrink-0 text-muted-foreground hover:text-foreground"
                 >
                   <XIcon aria-hidden="true" />

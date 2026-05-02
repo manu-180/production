@@ -11,7 +11,7 @@ async function checkSupabase(): Promise<StatusResult> {
   const key = process.env["NEXT_PUBLIC_SUPABASE_ANON_KEY"];
 
   if (!url || !key) {
-    return { label: "DB not configured", ok: null };
+    return { label: "BD no configurada", ok: null };
   }
 
   try {
@@ -20,11 +20,11 @@ async function checkSupabase(): Promise<StatusResult> {
       next: { revalidate: 30 },
     });
     return {
-      label: res.ok ? "Supabase connected" : "Supabase unreachable",
+      label: res.ok ? "Supabase conectado" : "Supabase inaccesible",
       ok: res.ok,
     };
   } catch {
-    return { label: "Supabase unreachable", ok: false };
+    return { label: "Supabase inaccesible", ok: false };
   }
 }
 

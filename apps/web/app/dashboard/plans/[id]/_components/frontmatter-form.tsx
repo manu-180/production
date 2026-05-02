@@ -22,9 +22,9 @@ interface FrontmatterFormProps {
 const DEBOUNCE_MS = 800;
 
 const PERMISSION_MODES = [
-  { value: "default", label: "Default" },
-  { value: "acceptEdits", label: "Accept Edits" },
-  { value: "bypassPermissions", label: "Bypass Permissions" },
+  { value: "default", label: "Por defecto" },
+  { value: "acceptEdits", label: "Aceptar ediciones" },
+  { value: "bypassPermissions", label: "Omitir permisos" },
 ] as const;
 
 export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormProps) {
@@ -81,12 +81,12 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
       {/* Title */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="fm-title" className="text-xs font-medium">
-          Title
+          Título
         </Label>
         <Input
           id="fm-title"
           {...form.register("title")}
-          placeholder="Prompt title"
+          placeholder="Título del prompt"
           className="h-8 text-sm"
         />
       </div>
@@ -95,7 +95,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <Label htmlFor="fm-continue-session" className="text-xs font-medium cursor-pointer">
-            Continue session
+            Continuar sesión
           </Label>
           <Controller
             control={form.control}
@@ -112,7 +112,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
 
         <div className="flex items-center justify-between">
           <Label htmlFor="fm-requires-approval" className="text-xs font-medium cursor-pointer">
-            Requires approval
+            Requiere aprobación
           </Label>
           <Controller
             control={form.control}
@@ -129,7 +129,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
 
         <div className="flex items-center justify-between">
           <Label htmlFor="fm-rollback" className="text-xs font-medium cursor-pointer">
-            Rollback on fail
+            Revertir al fallar
           </Label>
           <Controller
             control={form.control}
@@ -147,7 +147,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
 
       {/* Allowed tools */}
       <div className="flex flex-col gap-2">
-        <Label className="text-xs font-medium">Allowed tools</Label>
+        <Label className="text-xs font-medium">Herramientas permitidas</Label>
         <Controller
           control={form.control}
           name="allowedTools"
@@ -184,7 +184,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
       {/* Permission mode */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="fm-permission-mode" className="text-xs font-medium">
-          Permission mode
+          Modo de permisos
         </Label>
         <Controller
           control={form.control}
@@ -212,7 +212,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="fm-max-turns" className="text-xs font-medium">
-            Max turns
+            Turnos máximos
           </Label>
           <Input
             id="fm-max-turns"
@@ -231,7 +231,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="fm-retries" className="text-xs font-medium">
-            Retries
+            Reintentos
           </Label>
           <Input
             id="fm-retries"
@@ -250,7 +250,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
 
         <div className="flex flex-col gap-1.5 col-span-2">
           <Label htmlFor="fm-max-budget" className="text-xs font-medium">
-            Max budget (USD)
+            Presupuesto máximo (USD)
           </Label>
           <Input
             id="fm-max-budget"
@@ -264,7 +264,7 @@ export function FrontmatterForm({ prompt, planId, onChange }: FrontmatterFormPro
               min: 0.01,
               max: 100,
             })}
-            placeholder="Optional"
+            placeholder="Opcional"
           />
         </div>
       </div>

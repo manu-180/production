@@ -1,10 +1,10 @@
 "use client";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ChevronRightIcon, MenuIcon, SearchIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { NotificationBell } from "./notification-bell";
 import { Sidebar } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
@@ -29,13 +29,13 @@ function buildCrumbs(pathname: string): Crumb[] {
 }
 
 function titleize(s: string): string {
-  if (s === "dashboard") return "Dashboard";
-  if (s === "runs") return "Runs";
-  if (s === "plans") return "Plans";
-  if (s === "templates") return "Templates";
-  if (s === "settings") return "Settings";
-  if (s === "decisions") return "Decisions";
-  if (s === "diff") return "Diff";
+  if (s === "dashboard") return "Panel";
+  if (s === "runs") return "Ejecuciones";
+  if (s === "plans") return "Planes";
+  if (s === "templates") return "Plantillas";
+  if (s === "settings") return "Configuración";
+  if (s === "decisions") return "Decisiones";
+  if (s === "diff") return "Diferencias";
   return s;
 }
 
@@ -49,7 +49,12 @@ export function Topbar() {
       <Sheet>
         <SheetTrigger
           render={
-            <Button variant="ghost" size="icon-sm" aria-label="Open navigation" className="lg:hidden">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Abrir navegación"
+              className="lg:hidden"
+            >
               <MenuIcon className="size-4" />
             </Button>
           }
@@ -59,7 +64,10 @@ export function Topbar() {
         </SheetContent>
       </Sheet>
 
-      <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1 text-sm text-muted-foreground">
+      <nav
+        aria-label="Breadcrumb"
+        className="flex min-w-0 flex-1 items-center gap-1 text-sm text-muted-foreground"
+      >
         {crumbs.map((c, i) => (
           <span key={c.href} className="flex items-center gap-1">
             {i > 0 && <ChevronRightIcon className="size-3" aria-hidden="true" />}
@@ -78,14 +86,12 @@ export function Topbar() {
         <Button
           variant="ghost"
           size="sm"
-          aria-label="Open command palette (Cmd+K)"
-          onClick={() =>
-            window.dispatchEvent(new CustomEvent("open-command-palette"))
-          }
+          aria-label="Abrir paleta de comandos (Cmd+K)"
+          onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
           className="gap-2 text-muted-foreground"
         >
           <SearchIcon className="size-3.5" />
-          <span className="hidden sm:inline">Search…</span>
+          <span className="hidden sm:inline">Buscar…</span>
           <kbd className="ml-2 hidden rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground sm:inline">
             ⌘K
           </kbd>

@@ -110,7 +110,7 @@ export default async function DiffPage({ params }: PageProps): Promise<React.Rea
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Diff for prompt: {promptId}</CardTitle>
+              <CardTitle>Diferencias del prompt: {promptId}</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {data.fromSha.slice(0, 8)} → {data.targetSha.slice(0, 8)}
               </p>
@@ -119,9 +119,9 @@ export default async function DiffPage({ params }: PageProps): Promise<React.Rea
           </CardHeader>
           <CardContent>
             {data.parsed.length === 0 ? (
-              <p className="text-muted-foreground">No changes in this checkpoint.</p>
+              <p className="text-muted-foreground">Sin cambios en este punto de control.</p>
             ) : (
-              <p className="text-sm">{data.parsed.length} file(s) changed</p>
+              <p className="text-sm">{data.parsed.length} archivo(s) modificado(s)</p>
             )}
           </CardContent>
         </Card>

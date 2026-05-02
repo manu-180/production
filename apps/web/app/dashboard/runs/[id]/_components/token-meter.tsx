@@ -8,7 +8,12 @@ interface Props {
   cacheTokens: number;
 }
 
-function Bar({ label, value, max, tone }: { label: string; value: number; max: number; tone: string }) {
+function Bar({
+  label,
+  value,
+  max,
+  tone,
+}: { label: string; value: number; max: number; tone: string }) {
   const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
   return (
     <div className="space-y-1">
@@ -17,10 +22,7 @@ function Bar({ label, value, max, tone }: { label: string; value: number; max: n
         <span className="font-mono">{formatTokens(value)}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div
-          className={`h-full rounded-full ${tone}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
@@ -42,9 +44,9 @@ export function TokenMeter({ inputTokens, outputTokens, cacheTokens }: Props) {
           </span>
         </div>
         <div className="space-y-2.5">
-          <Bar label="Input" value={inputTokens} max={max} tone="bg-sky-500" />
-          <Bar label="Output" value={outputTokens} max={max} tone="bg-emerald-500" />
-          <Bar label="Cache" value={cacheTokens} max={max} tone="bg-violet-500" />
+          <Bar label="Entrada" value={inputTokens} max={max} tone="bg-sky-500" />
+          <Bar label="Salida" value={outputTokens} max={max} tone="bg-emerald-500" />
+          <Bar label="Caché" value={cacheTokens} max={max} tone="bg-violet-500" />
         </div>
       </CardContent>
     </Card>

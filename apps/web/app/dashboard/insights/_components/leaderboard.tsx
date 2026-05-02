@@ -18,7 +18,7 @@ export function Leaderboard({ runs }: LeaderboardProps) {
   // Aggregate by plan_id
   const counts = new Map<string, number>();
   for (const r of runs) {
-    const key = r.plan_id ?? "(no plan)";
+    const key = r.plan_id ?? "(sin plan)";
     counts.set(key, (counts.get(key) ?? 0) + r.total_runs);
   }
 
@@ -27,7 +27,7 @@ export function Leaderboard({ runs }: LeaderboardProps) {
     .slice(0, 5);
 
   if (sorted.length === 0) {
-    return <div className="py-6 text-center text-sm text-muted-foreground">No data yet</div>;
+    return <div className="py-6 text-center text-sm text-muted-foreground">Sin datos todavía</div>;
   }
 
   const maxRuns = sorted[0]?.[1] ?? 1;

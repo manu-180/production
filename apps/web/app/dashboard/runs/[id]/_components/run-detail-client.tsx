@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
 import { useRunDetail } from "@/hooks/use-run-detail";
 import { useRunRealtime } from "@/hooks/use-run-realtime";
-import type { RunStatus } from "@/lib/ui/status";
+import { useEffect, useState } from "react";
 import { ApprovalModal } from "./approval-modal";
 import { CompletionConfetti } from "./completion-confetti";
 import { CostMeter } from "./cost-meter";
@@ -21,7 +20,9 @@ export function RunDetailClient({ runId }: { runId: string }) {
   // Auto-select the running execution if none is selected.
   useEffect(() => {
     if (!run || selectedExecutionId !== null) return;
-    const running = run.executions.find((e) => e.status === "running" || e.status === "awaiting_approval");
+    const running = run.executions.find(
+      (e) => e.status === "running" || e.status === "awaiting_approval",
+    );
     if (running) {
       setSelectedExecutionId(running.id);
       return;
@@ -33,7 +34,7 @@ export function RunDetailClient({ runId }: { runId: string }) {
   if (isLoading) {
     return (
       <div className="mx-auto flex h-64 max-w-7xl items-center justify-center text-sm text-muted-foreground">
-        Loading run…
+        Cargando ejecución…
       </div>
     );
   }
@@ -41,7 +42,7 @@ export function RunDetailClient({ runId }: { runId: string }) {
   if (isError || !run) {
     return (
       <div className="mx-auto flex h-64 max-w-7xl items-center justify-center text-sm text-rose-500">
-        Failed to load run.
+        No se pudo cargar la ejecución.
       </div>
     );
   }
@@ -73,7 +74,8 @@ export function RunDetailClient({ runId }: { runId: string }) {
           <section aria-label="Prompts" className="space-y-3 lg:col-span-2">
             {run.executions.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                No prompt executions yet — once the worker picks up this run, prompts will appear here.
+                Sin ejecuciones de prompts aún — una vez que el worker tome esta ejecución, los
+                prompts aparecerán acá.
               </div>
             ) : (
               run.executions.map((exec, idx) => (

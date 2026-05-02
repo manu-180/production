@@ -81,8 +81,8 @@ export function PlanHeader({ plan }: PlanHeaderProps) {
             }
           }}
           className="text-xl font-semibold bg-transparent border-none outline-none focus:underline decoration-dashed underline-offset-4 truncate max-w-xl"
-          placeholder="Untitled plan"
-          aria-label="Plan name"
+          placeholder="Plan sin título"
+          aria-label="Nombre del plan"
         />
 
         {/* Inline editable description */}
@@ -98,8 +98,8 @@ export function PlanHeader({ plan }: PlanHeaderProps) {
             }
           }}
           className="text-sm text-muted-foreground bg-transparent border-none outline-none focus:underline decoration-dashed underline-offset-4 max-w-xl"
-          placeholder="Add a description..."
-          aria-label="Plan description"
+          placeholder="Agregá una descripción..."
+          aria-label="Descripción del plan"
         />
 
         {/* Tags */}
@@ -128,8 +128,8 @@ export function PlanHeader({ plan }: PlanHeaderProps) {
               }
             }}
             className="text-xs text-muted-foreground bg-transparent border-none outline-none focus:underline decoration-dashed underline-offset-4 font-mono min-w-0 flex-1"
-            placeholder="Default working directory..."
-            aria-label="Default working directory"
+            placeholder="Directorio de trabajo por defecto..."
+            aria-label="Directorio de trabajo por defecto"
           />
         </div>
       </div>
@@ -144,7 +144,7 @@ export function PlanHeader({ plan }: PlanHeaderProps) {
             disabled={updatePlan.isPending}
           />
           <Label htmlFor="is-template" className="text-sm cursor-pointer">
-            Template
+            Plantilla
           </Label>
         </div>
 
@@ -152,7 +152,7 @@ export function PlanHeader({ plan }: PlanHeaderProps) {
           href={`/dashboard/plans/${plan.id}/runs`}
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          View runs
+          Ver ejecuciones
           <ExternalLinkIcon className="size-3.5" />
         </Link>
       </div>

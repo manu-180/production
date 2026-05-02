@@ -29,7 +29,7 @@ export function TimeSeriesChart({ data }: TimeSeriesChartProps) {
   if (data.length === 0) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-        No data yet
+        Sin datos todavía
       </div>
     );
   }
@@ -64,15 +64,15 @@ export function TimeSeriesChart({ data }: TimeSeriesChartProps) {
         <Legend wrapperStyle={{ fontSize: 12 }} />
         <Bar
           dataKey="successful"
-          name="Successful"
+          name="Exitosas"
           stackId="a"
           fill="#10b981"
           radius={[0, 0, 0, 0]}
         />
-        <Bar dataKey="failed" name="Failed" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="failed" name="Fallidas" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
         <Bar
           dataKey="cancelled"
-          name="Cancelled"
+          name="Canceladas"
           stackId="a"
           fill="#f59e0b"
           radius={[2, 2, 0, 0]}

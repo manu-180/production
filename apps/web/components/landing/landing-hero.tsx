@@ -40,7 +40,9 @@ export function LandingHero() {
       {/* Title */}
       <motion.div variants={item} className="space-y-3">
         <h1 className="text-5xl font-bold tracking-tight text-foreground sm:text-6xl">Conductor</h1>
-        <p className="text-lg text-muted-foreground font-mono">Plan it once. Conduct it forever.</p>
+        <p className="text-lg text-muted-foreground font-mono">
+          Planealo una vez. Conducilo para siempre.
+        </p>
       </motion.div>
 
       {/* Description */}
@@ -48,8 +50,8 @@ export function LandingHero() {
         variants={item}
         className="max-w-md text-base text-muted-foreground leading-relaxed"
       >
-        Orchestrate multi-step AI plans across any codebase. Define prompts once, execute them
-        reliably — with checkpoints, retries, and live streaming.
+        Orquestá planes de IA de múltiples pasos en cualquier codebase. Definí los prompts una vez y
+        ejecutalos de forma confiable — con checkpoints, reintentos y streaming en vivo.
       </motion.p>
 
       {/* CTA */}
@@ -58,7 +60,7 @@ export function LandingHero() {
           size="lg"
           render={
             <Link href="/dashboard" className="gap-2 inline-flex items-center">
-              Open Dashboard
+              Abrir Dashboard
               <ArrowRight className="size-4" />
             </Link>
           }
@@ -68,7 +70,7 @@ export function LandingHero() {
           size="lg"
           render={
             <a href="/docs" target="_blank" rel="noopener noreferrer">
-              Docs
+              Documentación
             </a>
           }
         />
@@ -79,7 +81,7 @@ export function LandingHero() {
         variants={item}
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         className="absolute top-4 right-4 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-        aria-label="Toggle theme"
+        aria-label="Cambiar tema"
       >
         {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
       </motion.button>

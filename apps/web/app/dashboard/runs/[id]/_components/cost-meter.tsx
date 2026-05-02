@@ -1,7 +1,7 @@
 "use client";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatCostUsd } from "@/lib/ui/format";
 import type { RunDetailCache } from "@/lib/realtime/event-handlers";
+import { formatCostUsd } from "@/lib/ui/format";
 
 export function CostMeter({ run }: { run: RunDetailCache }) {
   const completed = run.executions.filter((e) => e.status === "succeeded").length;
@@ -9,27 +9,25 @@ export function CostMeter({ run }: { run: RunDetailCache }) {
   const remaining = total - completed;
 
   const estimated =
-    completed > 0 && remaining > 0
-      ? (run.total_cost_usd / completed) * total
-      : null;
+    completed > 0 && remaining > 0 ? (run.total_cost_usd / completed) * total : null;
 
   return (
     <Card>
       <CardContent className="space-y-2 p-4">
         <div className="flex items-baseline justify-between">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Cost
+            Costo
           </h3>
           <span className="font-mono text-lg font-semibold tracking-tight">
             {formatCostUsd(run.total_cost_usd)}
           </span>
         </div>
         <div className="text-[11px] text-muted-foreground">
-          {completed} of {total} prompts complete
+          {completed} de {total} prompts completados
         </div>
         {estimated !== null && (
           <div className="text-[11px] text-muted-foreground">
-            Estimated total: <span className="font-mono">{formatCostUsd(estimated)}</span>
+            Total estimado: <span className="font-mono">{formatCostUsd(estimated)}</span>
           </div>
         )}
 

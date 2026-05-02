@@ -1,6 +1,4 @@
 "use client";
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -9,21 +7,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useShortcut } from "@/hooks/use-keyboard-shortcuts";
 import {
   useApprovePromptMutation,
   useRunActions,
   useSkipPromptMutation,
 } from "@/hooks/use-run-actions";
-import { useShortcut } from "@/hooks/use-keyboard-shortcuts";
 import type { RunDetailCache } from "@/lib/realtime/event-handlers";
+import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 
-const Markdown = dynamic(
-  () => import("react-markdown").then((m) => m.default),
-  {
-    ssr: false,
-    loading: () => <div className="text-xs text-muted-foreground">Loading…</div>,
-  },
-);
+const Markdown = dynamic(() => import("react-markdown").then((m) => m.default), {
+  ssr: false,
+  loading: () => <div className="text-xs text-muted-foreground">Loading…</div>,
+});
 
 function findAwaitingExecution(run: RunDetailCache) {
   return run.executions.find((e) => e.status === "awaiting_approval") ?? null;
@@ -81,16 +78,16 @@ export function ApprovalModal({ run }: { run: RunDetailCache }) {
         className={`max-w-2xl bg-background/95 backdrop-blur-md ${shake ? "animate-shake" : ""}`}
       >
         <DialogHeader>
-          <DialogTitle>Approval required</DialogTitle>
+          <DialogTitle>Aprobación requerida</DialogTitle>
           <DialogDescription>
-            This prompt is gated. Review and decide before the run continues. Esc
-            and outside-clicks are intentionally disabled.
+            Este prompt requiere aprobación. Revisá y decidí antes de que la ejecución continúe. Esc
+            y los clics fuera están deshabilitados intencionalmente.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 max-h-[50vh] overflow-y-auto rounded-md border border-border bg-muted/20 p-3 text-sm">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Working dir
+            Directorio de trabajo
           </div>
           <div className="font-mono text-xs">{run.working_dir}</div>
 
@@ -99,7 +96,7 @@ export function ApprovalModal({ run }: { run: RunDetailCache }) {
           </div>
           <div className="prose prose-sm prose-invert max-w-none">
             <Markdown>
-              {(exec as { content?: string }).content ?? "(prompt content not loaded)"}
+              {(exec as { content?: string }).content ?? "(contenido del prompt no cargado)"}
             </Markdown>
           </div>
         </div>
@@ -109,12 +106,12 @@ export function ApprovalModal({ run }: { run: RunDetailCache }) {
             variant="destructive"
             disabled={actions.cancel.isPending}
             onClick={() => {
-              if (window.confirm("Cancel the entire run?")) {
+              if (window.confirm("¿Cancelar toda la ejecución?")) {
                 actions.cancel.mutate();
               }
             }}
           >
-            Cancel run
+            Cancelar ejecución
           </Button>
           <Button
             variant="outline"
@@ -122,22 +119,18 @@ export function ApprovalModal({ run }: { run: RunDetailCache }) {
             onClick={() =>
               skip.mutate({
                 promptId: exec.prompt_id,
-                reason: "Rejected via approval modal",
+                reason: "Rechazado desde el modal de aprobación",
               })
             }
           >
-            Reject &amp; skip
+            Rechazar y saltear
           </Button>
           <Button
             disabled={approve.isPending}
-            onClick={() =>
-              approve.mutate({ promptId: exec.prompt_id, decision: "approve" })
-            }
+            onClick={() => approve.mutate({ promptId: exec.prompt_id, decision: "approve" })}
           >
-            Approve &amp; continue
-            <kbd className="ml-2 rounded bg-primary-foreground/10 px-1.5 py-0.5 text-[9px]">
-              ⌘↵
-            </kbd>
+            Aprobar y continuar
+            <kbd className="ml-2 rounded bg-primary-foreground/10 px-1.5 py-0.5 text-[9px]">⌘↵</kbd>
           </Button>
         </div>
       </DialogContent>

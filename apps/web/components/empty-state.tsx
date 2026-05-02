@@ -20,24 +20,24 @@ export interface EmptyStateProps {
 
 const DEFAULTS: Record<EmptyStateType, { title: string; description: string }> = {
   runs: {
-    title: "No runs yet",
-    description: "Launch a plan to see your runs here",
+    title: "Sin ejecuciones aún",
+    description: "Lanzá un plan para ver tus ejecuciones acá",
   },
   plans: {
-    title: "No plans yet",
-    description: "Create your first plan to get started",
+    title: "Sin planes aún",
+    description: "Creá tu primer plan para empezar",
   },
   schedules: {
-    title: "No schedules yet",
-    description: "Automate your plans with cron schedules",
+    title: "Sin programaciones aún",
+    description: "Automatizá tus planes con horarios cron",
   },
   templates: {
-    title: "No templates",
-    description: "Templates are not available yet",
+    title: "Sin plantillas aún",
+    description: "Las plantillas todavía no están disponibles",
   },
   search: {
-    title: "No results",
-    description: "Try a different search term",
+    title: "Sin resultados",
+    description: "Probá con otro término de búsqueda",
   },
 };
 

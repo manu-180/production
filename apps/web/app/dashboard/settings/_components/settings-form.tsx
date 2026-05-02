@@ -55,12 +55,12 @@ export function SettingsForm() {
   const mutation = useMutation({
     mutationFn: (patch: Patch) => apiClient.patch<SettingsRow>("/api/settings", patch),
     onSuccess: (data) => {
-      toast.success("Settings saved");
+      toast.success("Configuración guardada");
       qc.setQueryData(qk.settings.detail(), data);
     },
     onError: (err) => {
       const isApi = err instanceof ApiClientError;
-      toast.error(isApi ? err.message : "Failed to save settings", {
+      toast.error(isApi ? err.message : "Error al guardar la configuración", {
         description: isApi ? `Trace: ${err.traceId}` : undefined,
       });
     },
@@ -82,9 +82,9 @@ export function SettingsForm() {
     return (
       <Card>
         <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-          <p className="text-sm text-muted-foreground">Failed to load settings.</p>
+          <p className="text-sm text-muted-foreground">Error al cargar la configuración.</p>
           <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-            Retry
+            Reintentar
           </Button>
         </CardContent>
       </Card>
@@ -102,7 +102,7 @@ export function SettingsForm() {
       <Card>
         <CardContent className="space-y-5 p-6">
           <div className="space-y-2">
-            <Label htmlFor="default-model">Default model</Label>
+            <Label htmlFor="default-model">Modelo predeterminado</Label>
             <Input
               id="default-model"
               value={draft.default_model ?? ""}
@@ -111,12 +111,13 @@ export function SettingsForm() {
               maxLength={100}
             />
             <p className="text-xs text-muted-foreground">
-              Model used by default when launching runs. Override per plan if needed.
+              Modelo utilizado por defecto al lanzar ejecuciones. Podés sobreescribirlo por plan si
+              es necesario.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Mode</Label>
+            <Label>Modo</Label>
             <div className="flex flex-wrap gap-2">
               {(["light", "dark", "system"] as const).map((t) => (
                 <button
@@ -141,22 +142,22 @@ export function SettingsForm() {
 
       <Card>
         <CardContent className="space-y-5 p-6">
-          <h3 className="font-heading text-base font-semibold">Automation</h3>
+          <h3 className="font-heading text-base font-semibold">Automatización</h3>
           <ToggleRow
-            label="Auto-approve low-risk decisions"
-            description="Let the Guardian auto-decide low-risk prompts without surfacing approval modals."
+            label="Aprobar automáticamente decisiones de bajo riesgo"
+            description="Permitir que el Guardian decida automáticamente los prompts de bajo riesgo sin mostrar modales de aprobación."
             checked={!!draft.auto_approve_low_risk}
             onChange={(v) => setDraft({ ...draft, auto_approve_low_risk: v })}
           />
           <ToggleRow
-            label="Auto-commit after each prompt"
-            description="Create a checkpoint commit on the run branch after each successful prompt."
+            label="Commit automático después de cada prompt"
+            description="Crear un commit de checkpoint en la rama de ejecución después de cada prompt exitoso."
             checked={!!draft.git_auto_commit}
             onChange={(v) => setDraft({ ...draft, git_auto_commit: v })}
           />
           <ToggleRow
-            label="Auto-push run branches"
-            description="Push the run branch to origin once the run completes."
+            label="Push automático de ramas de ejecución"
+            description="Subir la rama de ejecución al origen una vez que la ejecución se completa."
             checked={!!draft.git_auto_push}
             onChange={(v) => setDraft({ ...draft, git_auto_push: v })}
           />
@@ -166,11 +167,11 @@ export function SettingsForm() {
       <div className="flex items-center justify-end gap-3">
         <span className="text-xs text-muted-foreground">
           {query.data?.updated_at
-            ? `Last saved ${new Date(query.data.updated_at).toLocaleString()}`
-            : "Never saved"}
+            ? `Guardado por última vez ${new Date(query.data.updated_at).toLocaleString()}`
+            : "Nunca guardado"}
         </span>
         <Button type="submit" disabled={mutation.isPending}>
-          {mutation.isPending ? "Saving…" : "Save changes"}
+          {mutation.isPending ? "Guardando…" : "Guardar cambios"}
         </Button>
       </div>
     </form>
@@ -214,19 +215,19 @@ const THEME_OPTIONS: ThemeOption[] = [
     value: "conductor-classic",
     label: "Conductor Classic",
     swatch: "oklch(0.205 0 0)",
-    description: "Default monochrome palette",
+    description: "Paleta monocromática predeterminada",
   },
   {
     value: "midnight",
     label: "Midnight",
     swatch: "oklch(0.55 0.2 264)",
-    description: "Deep indigo & violet",
+    description: "Índigo y violeta profundos",
   },
   {
     value: "solarized",
     label: "Solarized",
     swatch: "oklch(0.75 0.18 80)",
-    description: "Warm amber & teal",
+    description: "Ámbar cálido y teal",
   },
 ];
 
@@ -236,12 +237,12 @@ function AppearanceSection() {
   return (
     <Card>
       <CardContent className="space-y-4 p-6">
-        <h3 className="font-heading text-base font-semibold">Appearance</h3>
+        <h3 className="font-heading text-base font-semibold">Apariencia</h3>
         <fieldset className="space-y-2" disabled={isPending}>
-          <legend className="text-sm font-medium leading-none">Color theme</legend>
+          <legend className="text-sm font-medium leading-none">Tema de color</legend>
           <p className="text-xs text-muted-foreground">
-            Changes the primary accent colors throughout the interface. Works with both light and
-            dark mode.
+            Cambia los colores de acento primarios en toda la interfaz. Funciona tanto en modo claro
+            como oscuro.
           </p>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {THEME_OPTIONS.map((opt) => {

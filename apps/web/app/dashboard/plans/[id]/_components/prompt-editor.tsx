@@ -112,10 +112,10 @@ export function PromptEditor({ prompt, planId }: PromptEditorProps) {
         <div className="flex items-center justify-between border-b border-border px-3 py-1 shrink-0">
           <TabsList className="h-8 bg-transparent gap-1 p-0">
             <TabsTrigger value="edit" className="h-7 px-3 text-xs data-[state=active]:bg-muted">
-              Edit
+              Editar
             </TabsTrigger>
             <TabsTrigger value="preview" className="h-7 px-3 text-xs data-[state=active]:bg-muted">
-              Preview
+              Vista previa
             </TabsTrigger>
             <TabsTrigger
               value="frontmatter"
@@ -130,13 +130,13 @@ export function PromptEditor({ prompt, planId }: PromptEditorProps) {
             {saveStatus === "saving" && (
               <>
                 <Loader2Icon className="size-3 animate-spin" />
-                <span>Saving...</span>
+                <span>Guardando...</span>
               </>
             )}
             {saveStatus === "saved" && (
               <>
                 <CheckIcon className="size-3 text-emerald-500" />
-                <span className="text-emerald-500">Saved</span>
+                <span className="text-emerald-500">Guardado</span>
               </>
             )}
           </div>
@@ -153,7 +153,7 @@ export function PromptEditor({ prompt, planId }: PromptEditorProps) {
               "focus:outline-none p-4",
               "placeholder:text-muted-foreground",
             )}
-            placeholder="Write your prompt instructions here..."
+            placeholder="Escribí las instrucciones del prompt acá..."
             spellCheck={false}
             aria-label="Prompt content editor"
           />
@@ -163,7 +163,7 @@ export function PromptEditor({ prompt, planId }: PromptEditorProps) {
         <TabsContent value="preview" className="flex-1 min-h-0 overflow-auto m-0">
           <div className="prose prose-sm dark:prose-invert max-w-none p-4">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {stripFrontmatter(content) || "*No content to preview*"}
+              {stripFrontmatter(content) || "*Sin contenido para previsualizar*"}
             </ReactMarkdown>
           </div>
         </TabsContent>

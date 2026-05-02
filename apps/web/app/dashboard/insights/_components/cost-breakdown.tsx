@@ -24,17 +24,17 @@ export function CostBreakdown({ runsByDay }: CostBreakdownProps) {
     <div className="flex gap-6">
       <div className="flex-1 rounded-lg border border-border bg-muted/30 p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Cost (7 days)
+          Costo (7 días)
         </div>
         <div className="mt-2 text-2xl font-semibold tracking-tight">{formatUsd(cost7d)}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">estimated</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">estimado</div>
       </div>
       <div className="flex-1 rounded-lg border border-border bg-muted/30 p-4">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Cost (30 days)
+          Costo (30 días)
         </div>
         <div className="mt-2 text-2xl font-semibold tracking-tight">{formatUsd(cost30d)}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">estimated</div>
+        <div className="mt-0.5 text-xs text-muted-foreground">estimado</div>
       </div>
     </div>
   );

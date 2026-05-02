@@ -123,7 +123,9 @@ async function DecisionsContent({ runId }: { runId: string }) {
         <Card>
           <CardContent className="flex flex-col items-center justify-center gap-3 py-16">
             <ShieldIcon className="size-10 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">No Guardian interventions for this run.</p>
+            <p className="text-sm text-muted-foreground">
+              Sin intervenciones del Guardián para esta ejecución.
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -132,12 +134,12 @@ async function DecisionsContent({ runId }: { runId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Question detected</TableHead>
-                  <TableHead>Decision</TableHead>
-                  <TableHead>Strategy</TableHead>
-                  <TableHead>Confidence</TableHead>
-                  <TableHead>Reviewed</TableHead>
+                  <TableHead>Hora</TableHead>
+                  <TableHead>Pregunta detectada</TableHead>
+                  <TableHead>Decisión</TableHead>
+                  <TableHead>Estrategia</TableHead>
+                  <TableHead>Confianza</TableHead>
+                  <TableHead>Revisado</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -166,7 +168,7 @@ async function DecisionsContent({ runId }: { runId: string }) {
                     <TableCell>
                       {d.overriddenByHuman && (
                         <Badge variant="outline" className="text-xs">
-                          Yes
+                          Sí
                         </Badge>
                       )}
                     </TableCell>
@@ -200,14 +202,14 @@ export default async function GuardianDecisionsPage({
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Back to run"
+          aria-label="Volver a la ejecución"
           render={<Link href={`/dashboard/runs/${runId}`} />}
         >
           <ArrowLeftIcon />
         </Button>
         <div className="flex items-center gap-2">
           <ShieldIcon className="size-5 text-muted-foreground" />
-          <h1 className="font-heading text-lg font-semibold">Guardian Decisions</h1>
+          <h1 className="font-heading text-lg font-semibold">Decisiones del Guardián</h1>
         </div>
         <span className="ml-auto font-mono text-xs text-muted-foreground">{runId}</span>
       </div>

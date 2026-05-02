@@ -18,9 +18,9 @@ function EmptyPromptState() {
   return (
     <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border">
       <div className="text-center">
-        <p className="text-sm font-medium text-muted-foreground">No prompt selected</p>
+        <p className="text-sm font-medium text-muted-foreground">Ningún prompt seleccionado</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Select a prompt from the list or add a new one
+          Seleccioná un prompt de la lista o agregá uno nuevo
         </p>
       </div>
     </div>
@@ -102,7 +102,9 @@ export function PlanEditorClient({ planId }: PlanEditorClientProps) {
   if (isError || !plan) {
     return (
       <div className="flex h-64 items-center justify-center rounded-xl border border-border">
-        <p className="text-sm text-rose-500">Failed to load plan. Please refresh.</p>
+        <p className="text-sm text-rose-500">
+          Error al cargar el plan. Por favor, recargá la página.
+        </p>
       </div>
     );
   }
