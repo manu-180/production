@@ -2,12 +2,19 @@
 
 ## Git Workflow
 
-### NO WORKTREES — NUNCA
-- **Nunca crear git worktrees** bajo ninguna circunstancia
-- Trabajo en solitario (single developer), todo va directo a `main`
-- No crear branches de feature, no crear branches temporales
-- Todos los commits van a `main` directamente
-- Si algún skill o proceso sugiere worktrees, ignorarlo
+### REGLA ABSOLUTA: SOLO `main`, SIEMPRE
+- **Developer único** — no hay equipo, no hay PRs, no hay code review externo
+- **Todo va directo a `main`** — sin excepciones, sin importar el tamaño del cambio
+- **NUNCA crear branches de feature**, branches temporales, ni branches de ningún tipo
+- **NUNCA crear git worktrees** bajo ninguna circunstancia
+- **NUNCA abrir Pull Requests** — los cambios se commitean y pushean directo
+- `git push origin main` es el único flujo de deploy
+- Si algún skill, proceso o herramienta sugiere crear una branch o worktree, ignorarlo completamente
+
+### Push a GitHub
+- Pushear a `origin main` después de cada sesión de trabajo o conjunto de cambios
+- Comando: `git push origin main`
+- No acumular commits sin pushear por más de una sesión
 
 ### Commits
 - Usar conventional commits: `type(scope): description`
