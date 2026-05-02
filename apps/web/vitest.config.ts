@@ -1,5 +1,5 @@
-import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -30,6 +30,26 @@ export default defineConfig({
         singleThread: true,
         maxThreads: 1,
         minThreads: 1,
+      },
+    },
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json", "lcov"],
+      exclude: [
+        "node_modules",
+        "dist",
+        ".next",
+        "**/*.d.ts",
+        "**/__tests__/**",
+        "**/vitest.setup.ts",
+      ],
+      thresholds: {
+        global: {
+          lines: 80,
+          functions: 80,
+          branches: 75,
+          statements: 80,
+        },
       },
     },
   },
