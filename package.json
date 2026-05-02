@@ -15,13 +15,19 @@
     "prepare": "lefthook install",
     "db:types": "bash packages/db/scripts/gen-types.sh",
     "db:reset": "pnpm dlx supabase db reset",
-    "db:push": "pnpm dlx supabase db push"
+    "db:push": "pnpm dlx supabase db push",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "loadtest": "tsx scripts/loadtest.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@commitlint/cli": "^20.5.2",
     "@commitlint/config-conventional": "^20.5.0",
+    "@supabase/supabase-js": "^2.47.10",
+    "@types/node": "^22.10.0",
+    "dotenv": "^16.4.7",
     "lefthook": "^2.1.6",
+    "tsx": "^4.19.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   }
