@@ -20,7 +20,7 @@ export interface Plan {
 export interface PromptDefinition {
   id: string;
   order: number;
-  filename: string;
+  filename: string | null;
   content: string;
   frontmatter: PromptFrontmatter;
 }

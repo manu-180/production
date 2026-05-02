@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+
 export interface ClaudeCommandOptions {
   prompt: string;
   workingDir: string;
@@ -70,9 +74,36 @@ export function buildClaudeArgs(opts: ClaudeCommandOptions): string[] {
   return args;
 }
 
+// Cached path to the real claude.exe on Windows
+let _windowsClaudeExe: string | undefined;
+
+// On Windows, npm ships a .cmd shim that fails with EINVAL when spawned
+// with shell:false. Resolve the underlying .exe the .cmd delegates to.
+function resolveWindowsClaudeExe(): string {
+  if (_windowsClaudeExe !== undefined) return _windowsClaudeExe;
+  const cmdPath = execFileSync("where", ["claude.cmd"], { encoding: "utf8" })
+    .split(/\r?\n/)[0]
+    .trim();
+  const exePath = join(
+    dirname(cmdPath),
+    "node_modules",
+    "@anthropic-ai",
+    "claude-code",
+    "bin",
+    "claude.exe",
+  );
+  if (!existsSync(exePath)) {
+    throw new Error(
+      `claude.exe not found at ${exePath} — reinstall @anthropic-ai/claude-code globally`,
+    );
+  }
+  _windowsClaudeExe = exePath;
+  return exePath;
+}
+
 export function resolveClaudeBinary(): { command: string; useShell: boolean } {
   if (process.platform === "win32") {
-    return { command: "claude.cmd", useShell: false };
+    return { command: resolveWindowsClaudeExe(), useShell: false };
   }
   return { command: "claude", useShell: false };
 }

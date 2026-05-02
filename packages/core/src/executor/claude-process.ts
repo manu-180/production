@@ -124,7 +124,7 @@ export class ClaudeProcess extends EventEmitter {
     }
 
     const args = buildClaudeArgs(this.opts);
-    const { command } = resolveClaudeBinary();
+    const { command, useShell } = resolveClaudeBinary();
 
     this.startTimeMs = Date.now();
 
@@ -133,7 +133,7 @@ export class ClaudeProcess extends EventEmitter {
       child = spawn(command, args, {
         cwd: this.opts.workingDir,
         env: this.env,
-        shell: false,
+        shell: useShell,
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       }) as ClaudeChild;

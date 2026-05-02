@@ -222,7 +222,7 @@ interface PromptRow {
   id: string;
   plan_id: string;
   order_index: number;
-  filename: string;
+  filename: string | null;
   content: string;
   frontmatter: PromptFrontmatter | null;
 }
@@ -246,7 +246,7 @@ function isPromptRow(value: unknown): value is PromptRow {
     typeof v["id"] === "string" &&
     typeof v["plan_id"] === "string" &&
     typeof v["order_index"] === "number" &&
-    typeof v["filename"] === "string" &&
+    (v["filename"] === null || typeof v["filename"] === "string") &&
     typeof v["content"] === "string"
   );
 }

@@ -38,6 +38,7 @@ export function RunHeader({ run }: { run: RunDetailCache }) {
           variant="ghost"
           size="sm"
           render={<Link href="/dashboard/runs" />}
+          nativeButton={false}
           className="-ml-2 gap-1.5"
         >
           <ArrowLeftIcon className="size-3.5" /> Volver a ejecuciones
