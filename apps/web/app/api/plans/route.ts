@@ -7,7 +7,7 @@ import {
   planCreateSchema,
   planListQuerySchema,
 } from "@/lib/validators/plans";
-import { AuditLogger, type DbClient } from "@conductor/core";
+import { AuditLogger, type GuardianDbClient } from "@conductor/core";
 import { createServiceClient } from "@conductor/db";
 
 export const dynamic = "force-dynamic";
@@ -90,7 +90,7 @@ export const POST = defineRoute<PlanCreate>(
     }
 
     const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
+    const audit = new AuditLogger(svc as unknown as GuardianDbClient);
     void audit.log({
       actor: "user",
       action: "plan.created",

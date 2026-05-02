@@ -1,11 +1,9 @@
 // Shared type (duplicated across API routes and page — centralize here).
 //
-// Note on naming: the DB columns are `reviewed_by_human` (bool) and
-// `human_override` (text, nullable). The view-model camelCase keeps
-// `overriddenByHuman`/`overrideResponse` for backwards compatibility with the
-// dashboard and existing consumers. `overriddenByHuman` is derived as
-// `reviewed_by_human === true && human_override !== null` so a "reviewed but
-// not overridden" decision (acknowledged but accepted) reads correctly.
+// Post-migration (20260430000001_guardian_decisions.sql) column names:
+//   `overridden_by_human` (bool) — a human manually submitted an override response.
+//   `override_response`   (text, nullable) — the human's submitted answer.
+//   `requires_human_review` (bool) — decision is pending review.
 export interface GuardianDecisionRow {
   id: string;
   promptExecutionId: string;
@@ -51,8 +49,7 @@ export function mapDecisionRow(row: Record<string, unknown>): GuardianDecisionRo
     : "llm";
 
   const rawContextSnippet = row["context_snippet"];
-  const rawHumanOverride = row["human_override"];
-  const reviewedByHuman = row["reviewed_by_human"] === true;
+  const rawOverrideResponse = row["override_response"];
 
   return {
     id: String(row["id"] ?? ""),
@@ -64,12 +61,8 @@ export function mapDecisionRow(row: Record<string, unknown>): GuardianDecisionRo
     confidence,
     strategy,
     requiresHumanReview: row["requires_human_review"] === true,
-    // "Overridden" = reviewed AND a human response was recorded.
-    // A reviewed-but-empty decision means the human acknowledged without
-    // changing course; we don't surface that as overridden.
-    overriddenByHuman:
-      reviewedByHuman && rawHumanOverride !== null && rawHumanOverride !== undefined,
-    overrideResponse: rawHumanOverride ? String(rawHumanOverride) : undefined,
+    overriddenByHuman: row["overridden_by_human"] === true,
+    overrideResponse: rawOverrideResponse ? String(rawOverrideResponse) : undefined,
     createdAt: String(row["created_at"] ?? ""),
   };
 }

@@ -15,7 +15,10 @@ export type Database = {
           expires_at: string | null;
           id: string;
           iv: string;
+          key_version: number;
           provider: string;
+          revoked_at: string | null;
+          tag: string;
           updated_at: string;
           user_id: string;
         };
@@ -25,7 +28,10 @@ export type Database = {
           expires_at?: string | null;
           id?: string;
           iv: string;
+          key_version?: number;
           provider?: string;
+          revoked_at?: string | null;
+          tag?: string;
           updated_at?: string;
           user_id: string;
         };
@@ -35,7 +41,10 @@ export type Database = {
           expires_at?: string | null;
           id?: string;
           iv?: string;
+          key_version?: number;
           provider?: string;
+          revoked_at?: string | null;
+          tag?: string;
           updated_at?: string;
           user_id?: string;
         };
@@ -43,43 +52,46 @@ export type Database = {
       };
       guardian_decisions: {
         Row: {
-          confidence: number | null;
+          confidence: number;
           context_snippet: string | null;
           created_at: string;
-          decision: string | null;
-          human_override: string | null;
+          decision: string;
           id: string;
+          override_response: string | null;
+          overridden_by_human: boolean;
           prompt_execution_id: string;
-          question_detected: string | null;
-          reasoning: string | null;
-          reviewed_by_human: boolean;
-          strategy: string | null;
+          question_detected: string;
+          reasoning: string;
+          requires_human_review: boolean;
+          strategy: string;
         };
         Insert: {
-          confidence?: number | null;
+          confidence: number;
           context_snippet?: string | null;
           created_at?: string;
-          decision?: string | null;
-          human_override?: string | null;
+          decision: string;
           id?: string;
+          override_response?: string | null;
+          overridden_by_human?: boolean;
           prompt_execution_id: string;
-          question_detected?: string | null;
-          reasoning?: string | null;
-          reviewed_by_human?: boolean;
-          strategy?: string | null;
+          question_detected: string;
+          reasoning: string;
+          requires_human_review?: boolean;
+          strategy: string;
         };
         Update: {
-          confidence?: number | null;
+          confidence?: number;
           context_snippet?: string | null;
           created_at?: string;
-          decision?: string | null;
-          human_override?: string | null;
+          decision?: string;
           id?: string;
+          override_response?: string | null;
+          overridden_by_human?: boolean;
           prompt_execution_id?: string;
-          question_detected?: string | null;
-          reasoning?: string | null;
-          reviewed_by_human?: boolean;
-          strategy?: string | null;
+          question_detected?: string;
+          reasoning?: string;
+          requires_human_review?: boolean;
+          strategy?: string;
         };
         Relationships: [
           {

@@ -17,6 +17,7 @@ import {
   ConcreteCheckpointManager,
   type DbClient,
   GitManager,
+  type GuardianDbClient,
   Orchestrator,
   PauseController,
   type Plan,
@@ -354,7 +355,7 @@ export class RunHandler {
       this.logger.error({ err, runId: this._runId }, "failed to write terminal run status (threw)");
     }
 
-    const audit = new AuditLogger(db);
+    const audit = new AuditLogger(db as unknown as GuardianDbClient);
     if (status === "completed") {
       void audit.log({
         actor: "worker",

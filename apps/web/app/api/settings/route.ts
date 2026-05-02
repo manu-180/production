@@ -1,6 +1,6 @@
 import { defineRoute, respond, respondError } from "@/lib/api";
 import { type SettingsUpdate, settingsUpdateSchema } from "@/lib/validators/settings";
-import { AuditLogger, type DbClient } from "@conductor/core";
+import { AuditLogger, type GuardianDbClient } from "@conductor/core";
 import { createServiceClient } from "@conductor/db";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +99,7 @@ export const PATCH = defineRoute<SettingsUpdate>(
     }
 
     const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
+    const audit = new AuditLogger(svc as unknown as GuardianDbClient);
     void audit.log({
       actor: "user",
       action: "settings.updated",

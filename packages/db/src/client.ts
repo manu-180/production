@@ -1,5 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "./types.gen";
+import type { Database } from "./types.gen.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];

@@ -49,8 +49,8 @@ export const POST = defineRoute<DecisionOverride, undefined, Params>(
     const { data: updated, error: updateErr } = await user.db
       .from("guardian_decisions")
       .update({
-        human_override: body.humanResponse,
-        reviewed_by_human: true,
+        override_response: body.humanResponse,
+        overridden_by_human: true,
       })
       .eq("id", params.decisionId)
       .select()

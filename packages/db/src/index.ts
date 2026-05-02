@@ -1,10 +1,10 @@
-import type { Database } from "./types.gen";
+import type { Database } from "./types.gen.js";
 
-export { createClient } from "./client";
-export { createServerComponentClient, createServiceClient } from "./server";
+export { createClient } from "./client.js";
+export { createServerComponentClient, createServiceClient } from "./server.js";
 export type { SupabaseClient } from "@supabase/supabase-js";
-export type { Database } from "./types.gen";
-export type { Json } from "./types.gen";
+export type { Database } from "./types.gen.js";
+export type { Json } from "./types.gen.js";
 
 /** Pre-typed service client. Routes that hold a service-role db can use this alias. */
 export type ServiceClient = import("@supabase/supabase-js").SupabaseClient<Database>;

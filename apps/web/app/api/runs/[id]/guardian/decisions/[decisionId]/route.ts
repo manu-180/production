@@ -17,9 +17,8 @@ interface Params {
  * (`components/guardian/decision-detail-dialog.tsx`) keeps working while we
  * migrate it.
  *
- * Bug fixed in 10.7: previously wrote `overridden_by_human` and
- * `override_response`, neither of which exist on `guardian_decisions`. The
- * actual columns are `reviewed_by_human` (bool) and `human_override` (text).
+ * Updated post-migration: uses the correct columns `override_response` (text)
+ * and `overridden_by_human` (bool) introduced in 20260430000001_guardian_decisions.sql.
  */
 const legacyOverrideSchema = z.object({
   overrideResponse: z.string().min(1).max(4000),
@@ -55,8 +54,8 @@ export const PATCH = defineRoute<LegacyOverride, undefined, Params>(
     const { error: updateError } = await user.db
       .from("guardian_decisions")
       .update({
-        human_override: body.overrideResponse,
-        reviewed_by_human: true,
+        override_response: body.overrideResponse,
+        overridden_by_human: true,
       })
       .eq("id", params.decisionId);
 

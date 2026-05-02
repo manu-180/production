@@ -18,7 +18,6 @@ function makePreferenceRow(
     channel,
     enabled: true,
     severity_threshold: severityThreshold,
-    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
 }

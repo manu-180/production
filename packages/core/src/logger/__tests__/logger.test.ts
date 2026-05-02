@@ -101,8 +101,8 @@ describe("formatters.level", () => {
     expect(lines).toHaveLength(1);
     const parsed = JSON.parse(lines.at(0) ?? "{}") as Record<string, unknown>;
     // Should be string "info", not numeric 30
-    expect(parsed.level).toBe("info");
-    expect(typeof parsed.level).toBe("string");
+    expect(parsed["level"]).toBe("info");
+    expect(typeof parsed["level"]).toBe("string");
   });
 });
 
@@ -136,8 +136,8 @@ describe("redaction integration", () => {
 
     expect(lines).toHaveLength(1);
     const parsed = JSON.parse(lines.at(0) ?? "{}") as Record<string, unknown>;
-    expect(parsed.token).toBe("[REDACTED]");
-    expect(parsed.msg).toBe("auth event");
+    expect(parsed["token"]).toBe("[REDACTED]");
+    expect(parsed["msg"]).toBe("auth event");
   });
 
   it("censors password field in log output", () => {
@@ -168,7 +168,7 @@ describe("redaction integration", () => {
 
     expect(lines).toHaveLength(1);
     const parsed = JSON.parse(lines.at(0) ?? "{}") as Record<string, unknown>;
-    expect(parsed.password).toBe("[REDACTED]");
+    expect(parsed["password"]).toBe("[REDACTED]");
   });
 
   it("censors encrypted_token and iv fields in log output", () => {
@@ -199,7 +199,7 @@ describe("redaction integration", () => {
 
     expect(lines).toHaveLength(1);
     const parsed = JSON.parse(lines.at(0) ?? "{}") as Record<string, unknown>;
-    expect(parsed.encrypted_token).toBe("[REDACTED]");
-    expect(parsed.iv).toBe("[REDACTED]");
+    expect(parsed["encrypted_token"]).toBe("[REDACTED]");
+    expect(parsed["iv"]).toBe("[REDACTED]");
   });
 });

@@ -18,10 +18,9 @@ interface Params {
 /**
  * GET /api/runs/:id/guardian/metrics — aggregated guardian metrics for a run.
  *
- * Reads the columns `reviewed_by_human` (bool) and `human_override` (text),
- * which are the actual schema. Earlier versions referenced
- * `overridden_by_human`, which never existed in the DB and surfaced as a
- * Postgrest schema-mismatch error at runtime.
+ * Reads the columns introduced by migration 20260430000001_guardian_decisions.sql:
+ * `requires_human_review` (bool), `override_response` (text), and
+ * `overridden_by_human` (bool).
  */
 export const GET = defineRoute<undefined, undefined, Params>(
   {},
@@ -50,7 +49,7 @@ export const GET = defineRoute<undefined, undefined, Params>(
 
     const { data: decisions, error: decisionsError } = await user.db
       .from("guardian_decisions")
-      .select("strategy, confidence, reviewed_by_human, human_override")
+      .select("strategy, confidence, requires_human_review, override_response, overridden_by_human")
       .in("prompt_execution_id", executionIds);
 
     if (decisionsError !== null) {

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "./types.gen";
+import type { Database } from "./types.gen.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];

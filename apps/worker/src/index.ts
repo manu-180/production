@@ -22,6 +22,7 @@ import { config as loadEnv } from "dotenv";
 const __workerDir = dirname(fileURLToPath(import.meta.url));
 // Load from monorepo root (../../.env relative to src/)
 loadEnv({ path: resolve(__workerDir, "../../../.env") });
+import type { Database } from "@conductor/db";
 import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { PgListener } from "./lib/pg-listen.js";
@@ -91,7 +92,7 @@ async function checkForQueuedRuns(): Promise<void> {
   if (shuttingDown) return;
   if (activeRuns.size >= WORKER_CONCURRENCY) return;
 
-  const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   const { data: runs, error: selectError } = await db
     .from("runs")
@@ -164,7 +165,7 @@ const listener = new PgListener({
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const WORKER_HEARTBEAT_INTERVAL_MS = 15_000;
 
-async function upsertWorkerHeartbeat(db: ReturnType<typeof createClient>): Promise<void> {
+async function upsertWorkerHeartbeat(db: ReturnType<typeof createClient<Database>>): Promise<void> {
   await db.from("worker_instances").upsert(
     {
       id: WORKER_ID,
@@ -177,7 +178,7 @@ async function upsertWorkerHeartbeat(db: ReturnType<typeof createClient>): Promi
   );
 }
 
-async function updateWorkerHeartbeat(db: ReturnType<typeof createClient>): Promise<void> {
+async function updateWorkerHeartbeat(db: ReturnType<typeof createClient<Database>>): Promise<void> {
   await db
     .from("worker_instances")
     .update({ last_seen_at: new Date().toISOString() })
@@ -243,7 +244,7 @@ logger.info(
 // Sweep orphaned runs from prior worker crashes BEFORE we start listening.
 // Failures here are logged and do not block startup.
 {
-  const recoveryClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const recoveryClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   await runStartupRecovery(recoveryClient, logger);
 }
 
@@ -251,7 +252,7 @@ await listener.start();
 
 // Register this worker instance and start the heartbeat loop.
 {
-  const heartbeatClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const heartbeatClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   await upsertWorkerHeartbeat(heartbeatClient);
   workerHeartbeatTimer = setInterval(() => {
     void updateWorkerHeartbeat(heartbeatClient).catch((err: unknown) => {
@@ -263,7 +264,7 @@ await listener.start();
 // Start the scheduler tick. A dedicated client is used so the scheduler's
 // Supabase calls are isolated from the run-polling client.
 {
-  const schedulerClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const schedulerClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   stopSchedulerTick = startSchedulerTick(schedulerClient, logger);
 }
 

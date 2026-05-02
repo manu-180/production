@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { type Logger, createLogger } from "../logger";
+import { type Logger, createLogger } from "../logger.js";
 
 /**
  * Input for the question detector.

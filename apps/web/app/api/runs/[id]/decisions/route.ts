@@ -58,7 +58,7 @@ export const GET = defineRoute<undefined, DecisionsListQuery, Params>(
       .order("created_at", { ascending: true });
 
     if (query.reviewed !== undefined) {
-      q = q.eq("reviewed_by_human", query.reviewed);
+      q = q.eq("overridden_by_human", query.reviewed);
     }
 
     const { data, error } = await q;

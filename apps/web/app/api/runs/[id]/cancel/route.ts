@@ -1,7 +1,7 @@
 import { defineRoute, respond, respondError } from "@/lib/api";
 import { assertRunOwned, emitRunEvent, transitionRunStatus } from "@/lib/api/run-utils";
 import { type RunCancel, runCancelSchema } from "@/lib/validators/runs";
-import { AuditLogger, type DbClient } from "@conductor/core";
+import { AuditLogger, type GuardianDbClient } from "@conductor/core";
 import { createServiceClient } from "@conductor/db";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +43,7 @@ export const POST = defineRoute<RunCancel, undefined, Params>(
     });
 
     const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
+    const audit = new AuditLogger(svc as unknown as GuardianDbClient);
     void audit.log({
       actor: "user",
       action: "run.cancelled",

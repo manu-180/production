@@ -1,7 +1,7 @@
 import { defineRoute, respond, respondError, respondNoContent } from "@/lib/api";
 import {
   AuditLogger,
-  type DbClient,
+  type GuardianDbClient,
   createProductionTokenManager,
   validateToken,
 } from "@conductor/core";
@@ -38,7 +38,7 @@ export const POST = defineRoute<TokenBody>(
     const mgr = await createProductionTokenManager();
     await mgr.saveToken(DEV_USER_ID, body.token);
     const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
+    const audit = new AuditLogger(svc as unknown as GuardianDbClient);
     void audit.log({
       actor: "user",
       action: "token.saved",
@@ -73,7 +73,7 @@ export const DELETE = defineRoute<undefined, undefined>(
     const mgr = await createProductionTokenManager();
     await mgr.revokeToken(DEV_USER_ID);
     const svc = createServiceClient();
-    const audit = new AuditLogger(svc as unknown as DbClient);
+    const audit = new AuditLogger(svc as unknown as GuardianDbClient);
     void audit.log({
       actor: "user",
       action: "token.revoked",
