@@ -15,7 +15,13 @@
  * orchestrator's cancel path, which kills the in-flight Claude process.
  */
 
-import "dotenv/config";
+import { hostname } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
+const __workerDir = dirname(fileURLToPath(import.meta.url));
+// Load from monorepo root (../../.env relative to src/)
+loadEnv({ path: resolve(__workerDir, "../../../.env") });
 import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { PgListener } from "./lib/pg-listen.js";
@@ -152,10 +158,38 @@ const listener = new PgListener({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Worker instance heartbeat (keeps worker_instances.last_seen_at fresh)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WORKER_ID = `${hostname()}-${process.pid}`;
+const WORKER_HEARTBEAT_INTERVAL_MS = 15_000;
+
+async function upsertWorkerHeartbeat(db: ReturnType<typeof createClient>): Promise<void> {
+  await db.from("worker_instances").upsert(
+    {
+      id: WORKER_ID,
+      hostname: hostname(),
+      pid: process.pid,
+      started_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+}
+
+async function updateWorkerHeartbeat(db: ReturnType<typeof createClient>): Promise<void> {
+  await db
+    .from("worker_instances")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("id", WORKER_ID);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Scheduler tick (populated at boot, referenced during shutdown)
 // ─────────────────────────────────────────────────────────────────────────────
 
 let stopSchedulerTick: (() => void) | null = null;
+let workerHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Graceful shutdown
@@ -171,6 +205,10 @@ function gracefulShutdown(signal: string): void {
   const shutdown = async (): Promise<void> => {
     listener.stop();
     stopSchedulerTick?.();
+    if (workerHeartbeatTimer !== null) {
+      clearInterval(workerHeartbeatTimer);
+      workerHeartbeatTimer = null;
+    }
 
     for (const [runId, handler] of activeRuns) {
       handler.cancel(`worker shutdown: ${signal}`);
@@ -211,6 +249,17 @@ logger.info(
 
 await listener.start();
 
+// Register this worker instance and start the heartbeat loop.
+{
+  const heartbeatClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  await upsertWorkerHeartbeat(heartbeatClient);
+  workerHeartbeatTimer = setInterval(() => {
+    void updateWorkerHeartbeat(heartbeatClient).catch((err: unknown) => {
+      logger.warn({ err }, "worker heartbeat tick failed");
+    });
+  }, WORKER_HEARTBEAT_INTERVAL_MS);
+}
+
 // Start the scheduler tick. A dedicated client is used so the scheduler's
 // Supabase calls are isolated from the run-polling client.
 {
@@ -218,4 +267,4 @@ await listener.start();
   stopSchedulerTick = startSchedulerTick(schedulerClient, logger);
 }
 
-logger.info("conductor worker ready");
+logger.info({ workerId: WORKER_ID }, "conductor worker ready");
