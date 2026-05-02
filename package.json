@@ -12,6 +12,7 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "e2e": "pnpm --filter @conductor/e2e test",
+    "e2e:ui": "pnpm --filter @conductor/e2e test:ui",
     "format": "biome format --write .",
     "prepare": "lefthook install",
     "db:types": "bash packages/db/scripts/gen-types.sh",

@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","cwd":"/tmp","session_id":"test-123","tools":[],"mcp_servers":[],"model":"claude-sonnet-4-7","permissionMode":"default","apiKeySource":"env"}
+{"type":"assistant","message":{"id":"msg_01","type":"message","role":"assistant","content":[{"type":"text","text":"I'll run echo hello for you."}],"model":"claude-sonnet-4-7","stop_reason":"tool_use","usage":{"input_tokens":100,"output_tokens":20}},"session_id":"test-123"}
+{"type":"tool_use","tool_use_id":"tool_01","tool_name":"Bash","tool_input":{"command":"echo hello","description":"Run echo hello"}}
+{"type":"tool_result","tool_use_id":"tool_01","content":"hello\n","is_error":false}
+{"type":"result","subtype":"success","result":"Done. Ran echo hello successfully.","session_id":"test-123","is_error":false,"usage":{"input_tokens":200,"output_tokens":50},"total_cost_usd":0.001}
