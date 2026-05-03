@@ -173,7 +173,7 @@ interface TriggerRunVars {
 }
 
 interface TriggerRunResponse {
-  runId: string;
+  id: string;
 }
 
 export function useTriggerRun() {

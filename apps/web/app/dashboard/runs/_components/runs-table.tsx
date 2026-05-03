@@ -17,6 +17,7 @@ import type { RunStatus } from "@/lib/ui/status";
 import type { Run } from "@conductor/db";
 import { ChevronRightIcon } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { RunStatusBadge } from "./run-status-badge";
 
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function RunsTable({ filters, searchClient }: Props) {
+  const router = useRouter();
   const query = useRunsList(filters);
   const sentinelRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -117,7 +119,11 @@ export function RunsTable({ filters, searchClient }: Props) {
           </TableHeader>
           <TableBody>
             {filtered.map((r) => (
-              <TableRow key={r.id} className="cursor-pointer">
+              <TableRow
+                key={r.id}
+                className="cursor-pointer"
+                onClick={() => router.push(`/dashboard/runs/${r.id}`)}
+              >
                 <TableCell>
                   <RunStatusBadge status={r.status as RunStatus} />
                 </TableCell>

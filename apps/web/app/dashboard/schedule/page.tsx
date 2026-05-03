@@ -32,7 +32,7 @@ import {
   useToggleSchedule,
   useUpdateSchedule,
 } from "@/hooks/use-schedules";
-import { getNextRun, isValidCron, parseCron } from "@conductor/core";
+import { getNextRun, isValidCron, parseCron } from "@conductor/core/scheduler";
 import {
   CalendarClockIcon,
   ChevronDownIcon,

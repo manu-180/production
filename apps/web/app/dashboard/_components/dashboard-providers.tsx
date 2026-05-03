@@ -1,6 +1,4 @@
 "use client";
-
-import { OnboardingTour } from "@/components/onboarding-tour";
 import { ShortcutsModal } from "@/components/shortcuts-modal";
 import { useShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useThemeConfig } from "@/hooks/use-theme-config";
@@ -26,7 +24,7 @@ export function DashboardProviders() {
   // Apply color theme class to <html> element
   useThemeConfig();
 
-  const { data: settings } = useQuery<SettingsRow>({
+  const { data: _settings } = useQuery<SettingsRow>({
     queryKey: qk.settings.detail(),
     queryFn: async () => {
       const response = await fetch("/api/settings");
@@ -48,7 +46,7 @@ export function DashboardProviders() {
         onShowShortcuts={onShowShortcutsModal}
       />
       <ShortcutsModal open={shortcutsModalOpen} onOpenChange={setShortcutsModalOpen} />
-      <OnboardingTour onboardingCompleted={settings?.onboarding_completed ?? false} />
+      {/* <OnboardingTour onboardingCompleted={settings?.onboarding_completed ?? false} /> */}
     </>
   );
 }

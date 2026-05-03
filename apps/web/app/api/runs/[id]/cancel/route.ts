@@ -1,6 +1,6 @@
 import { defineRoute, respond, respondError } from "@/lib/api";
 import { assertRunOwned, emitRunEvent, transitionRunStatus } from "@/lib/api/run-utils";
-import { type RunCancel, runCancelSchema } from "@/lib/validators/runs";
+import { type RunReasonBody, runReasonBodySchema } from "@/lib/validators/runs";
 import { AuditLogger, type GuardianDbClient } from "@conductor/core";
 import { createServiceClient } from "@conductor/db";
 
@@ -12,14 +12,14 @@ interface Params {
 
 /**
  * POST /api/runs/:id/cancel — terminal stop. Allowed from queued/running/paused.
- *
- * `cancellation_reason` is required to keep the audit trail meaningful.
+ * Body is optional; reason defaults to "user_initiated" for the audit trail.
  * The orchestrator's `PauseController.cancel()` reaches the same end state
  * inside the worker; here we update DB-side and let the worker observe.
  */
-export const POST = defineRoute<RunCancel, undefined, Params>(
-  { rateLimit: "mutation", bodySchema: runCancelSchema },
+export const POST = defineRoute<RunReasonBody, undefined, Params>(
+  { rateLimit: "mutation", bodySchema: runReasonBodySchema },
   async ({ user, traceId, body, params }) => {
+    const reason = body.reason ?? "user_initiated";
     const owned = await assertRunOwned(user.db, params.id, user.userId);
     if (owned === null) return respondError("not_found", "Run not found", { traceId });
 
@@ -28,7 +28,7 @@ export const POST = defineRoute<RunCancel, undefined, Params>(
       owned.id,
       ["queued", "running", "paused"],
       "cancelled",
-      { cancellation_reason: body.reason, finished_at: new Date().toISOString() },
+      { cancellation_reason: reason, finished_at: new Date().toISOString() },
     );
     if (updated === null) {
       return respondError("conflict", `cannot cancel run in status '${owned.status}'`, {
@@ -38,7 +38,7 @@ export const POST = defineRoute<RunCancel, undefined, Params>(
     }
 
     await emitRunEvent(user.db, owned.id, "user.cancel", {
-      reason: body.reason,
+      reason,
       actor: user.userId,
     });
 
@@ -50,7 +50,7 @@ export const POST = defineRoute<RunCancel, undefined, Params>(
       userId: user.userId,
       resourceType: "run",
       resourceId: owned.id,
-      metadata: { reason: body.reason },
+      metadata: { reason },
     });
     return respond(updated, { traceId });
   },

@@ -72,7 +72,7 @@ export function RunLauncherDialog({
           } else {
             onClose();
             toast.success("Ejecución iniciada");
-            router.push(`/dashboard/runs/${result.runId}`);
+            router.push(`/dashboard/runs/${result.id}`);
           }
         },
         onError: (err) => {

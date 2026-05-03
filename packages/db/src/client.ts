@@ -1,19 +1,10 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "./types.gen.js";
 
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
-  return value;
-}
-
-/**
- * Browser Supabase client — safe for client components.
- * Uses cookie-based session management via @supabase/ssr.
- * Call once per render; @supabase/ssr handles singleton internally.
- */
+// Direct access required — Next.js only statically replaces process.env.NEXT_PUBLIC_*
+// when accessed as a literal, not via dynamic process.env[name].
 export const createClient = () =>
   createBrowserClient<Database>(
-    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
   );

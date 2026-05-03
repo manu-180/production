@@ -30,6 +30,7 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
     await execFileAsync("claude", ["-p", "ping"], {
       env,
       timeout: 15_000,
+      shell: process.platform === "win32",
     });
     return { valid: true };
   } catch {

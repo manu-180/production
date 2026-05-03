@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
 import { formatDuration } from "@/lib/ui/format";
+import { useEffect, useState } from "react";
 
 interface Props {
   startedAt: string | null;
@@ -20,5 +20,9 @@ export function RunDuration({ startedAt, finishedAt, isRunning }: Props) {
   if (startedAt === null) return <span>—</span>;
   const end = finishedAt !== null ? new Date(finishedAt).getTime() : now;
   const ms = Math.max(0, end - new Date(startedAt).getTime());
-  return <span className="font-mono tabular-nums">{formatDuration(ms)}</span>;
+  return (
+    <span className="font-mono tabular-nums" suppressHydrationWarning>
+      {formatDuration(ms)}
+    </span>
+  );
 }

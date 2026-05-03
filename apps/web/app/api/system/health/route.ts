@@ -85,6 +85,7 @@ async function checkClaudeCli(): Promise<{ installed: boolean; version?: string 
   try {
     const { stdout } = await execFileAsync("claude", ["--version"], {
       timeout: CLAUDE_VERSION_TIMEOUT_MS,
+      shell: process.platform === "win32",
     });
     const match = /(\d+\.\d+\.\d+)/.exec(stdout);
     return { installed: true, version: match?.[1] };

@@ -5,6 +5,7 @@ import { type Variants, motion } from "framer-motion";
 import { ArrowRight, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { BatonLogo } from "./baton-logo";
 
 const container: Variants = {
@@ -22,6 +23,8 @@ const item: Variants = {
 
 export function LandingHero() {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <motion.div
@@ -83,7 +86,15 @@ export function LandingHero() {
         className="absolute top-4 right-4 p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         aria-label="Cambiar tema"
       >
-        {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+        {mounted ? (
+          theme === "dark" ? (
+            <Sun className="size-4" />
+          ) : (
+            <Moon className="size-4" />
+          )
+        ) : (
+          <Moon className="size-4" />
+        )}
       </motion.button>
     </motion.div>
   );
