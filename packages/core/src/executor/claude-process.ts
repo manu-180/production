@@ -37,6 +37,7 @@ export interface ExecutionResult {
   usage: TokenUsage;
   costUsd: number;
   errorMessage?: string;
+  stderrRaw?: string;
   capturedEvents: ClaudeStreamEvent[];
 }
 
@@ -77,6 +78,7 @@ export class ClaudeProcess extends EventEmitter {
   private finalStatus: FinalStatus | null = null;
   private killReason: string | null = null;
   private exitPromise: Promise<void> | null = null;
+  private closePromise: Promise<void> | null = null;
   private waitPromise: Promise<ExecutionResult> | null = null;
 
   private modelHint: string;
@@ -173,6 +175,13 @@ export class ClaudeProcess extends EventEmitter {
       child.once("exit", () => resolve());
       child.once("error", () => resolve());
     });
+
+    // Wait for both exit AND stdio stream close so stderrBuffer is fully
+    // populated before wait() reads it. On Windows, the exit event often
+    // fires before the readline interfaces finish processing buffered data.
+    const stdoutClosed = new Promise<void>((r) => child.stdout.once("close", r));
+    const stderrClosed = new Promise<void>((r) => child.stderr.once("close", r));
+    this.closePromise = Promise.all([this.exitPromise, stdoutClosed, stderrClosed]).then(() => {});
 
     this.stdoutReader = createInterface({
       input: child.stdout,
@@ -300,7 +309,9 @@ export class ClaudeProcess extends EventEmitter {
   async wait(): Promise<ExecutionResult> {
     if (this.waitPromise) return this.waitPromise;
     this.waitPromise = (async (): Promise<ExecutionResult> => {
-      if (this.exitPromise) {
+      if (this.closePromise) {
+        await this.closePromise;
+      } else if (this.exitPromise) {
         await this.exitPromise;
       }
       this.endStream();
@@ -337,6 +348,7 @@ export class ClaudeProcess extends EventEmitter {
         capturedEvents: this.captured,
       };
       if (errorMessage !== undefined) result.errorMessage = errorMessage;
+      if (this.stderrBuffer.length > 0) result.stderrRaw = this.stderrBuffer;
       return result;
     })();
     return this.waitPromise;

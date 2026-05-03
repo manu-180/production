@@ -15,8 +15,8 @@
 import {
   ClaudeProcess,
   type ClaudeProcessOptions,
-  ExecutorError,
   type ExecutionResult,
+  ExecutorError,
   isAssistantEvent,
 } from "../executor/index.js";
 import type { ClaudeStreamEvent, TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
@@ -154,8 +154,6 @@ export interface OrchestratorOptions {
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MAX_BACKOFF_MS = 60_000;
-
 /**
  * Maps the executor's snake_case {@link ExecutorTokenUsage} into the canonical
  * camelCase {@link TokenUsage} used by the rest of the system.
@@ -224,11 +222,6 @@ function errorMessage(err: unknown): string {
   } catch {
     return String(err);
   }
-}
-
-async function backoff(attempt: number): Promise<void> {
-  const delay = Math.min(2 ** attempt * 1000 + Math.random() * 1000, MAX_BACKOFF_MS);
-  await new Promise<void>((resolve) => setTimeout(resolve, delay));
 }
 
 /**
@@ -415,7 +408,7 @@ export async function updatePromptExecution(
   result: ExecutionResult | null,
   sha: string,
   db: DbClient,
-  errorInfo?: { code: string; message: string },
+  errorInfo?: { code: string; message: string; raw?: string },
 ): Promise<void> {
   const data: Record<string, unknown> = {
     status,
@@ -434,6 +427,7 @@ export async function updatePromptExecution(
   } else if (status === "failed") {
     data["error_code"] = errorInfo?.code ?? "UNKNOWN";
     data["error_message"] = errorInfo?.message ?? "unknown error";
+    if (errorInfo?.raw) data["error_raw"] = errorInfo.raw.slice(0, 10_000);
   }
 
   try {
@@ -733,7 +727,9 @@ export class Orchestrator {
               // up to the outer `catch` so retry/backoff kicks in.
               const procErrMsg =
                 result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
-              throw new Error(procErrMsg);
+              const err = new Error(procErrMsg);
+              (err as Error & { stderrRaw?: string }).stderrRaw = result.stderrRaw;
+              throw err;
             }
 
             // Always accumulate usage for completed turns — even mid-Guardian
@@ -871,9 +867,11 @@ export class Orchestrator {
               ? decision.classified.category.toUpperCase()
               : "UNKNOWN";
 
+          const stderrRaw = (err as Error & { stderrRaw?: string }).stderrRaw;
           await updatePromptExecution(executionId, "failed", null, "", this.db, {
             code: errCode,
             message: lastError,
+            raw: stderrRaw,
           });
 
           const willRetry = decision.retry && attempt < maxAttempts;
