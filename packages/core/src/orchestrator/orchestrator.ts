@@ -728,7 +728,9 @@ export class Orchestrator {
               const procErrMsg =
                 result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
               const err = new Error(procErrMsg);
-              (err as Error & { stderrRaw?: string }).stderrRaw = result.stderrRaw;
+              (err as Error & { stderrRaw?: string; stdoutRaw?: string }).stderrRaw =
+                result.stderrRaw;
+              (err as Error & { stdoutRaw?: string }).stdoutRaw = result.stdoutRaw;
               throw err;
             }
 
@@ -867,11 +869,12 @@ export class Orchestrator {
               ? decision.classified.category.toUpperCase()
               : "UNKNOWN";
 
-          const stderrRaw = (err as Error & { stderrRaw?: string }).stderrRaw;
+          const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
+          const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
           await updatePromptExecution(executionId, "failed", null, "", this.db, {
             code: errCode,
             message: lastError,
-            raw: stderrRaw,
+            raw: rawDiag,
           });
 
           const willRetry = decision.retry && attempt < maxAttempts;

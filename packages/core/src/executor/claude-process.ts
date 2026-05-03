@@ -38,6 +38,7 @@ export interface ExecutionResult {
   costUsd: number;
   errorMessage?: string;
   stderrRaw?: string;
+  stdoutRaw?: string;
   capturedEvents: ClaudeStreamEvent[];
 }
 
@@ -72,6 +73,7 @@ export class ClaudeProcess extends EventEmitter {
 
   private readonly captured: ClaudeStreamEvent[] = [];
   private stderrBuffer = "";
+  private stdoutRawBuffer = "";
   private resolvedSessionId: string | null = null;
   private startTimeMs = 0;
   private exitCode: number | null = null;
@@ -203,6 +205,12 @@ export class ClaudeProcess extends EventEmitter {
   }
 
   private handleStdoutLine(line: string): void {
+    if (line.length > 0) {
+      this.stdoutRawBuffer += `${line}\n`;
+      if (this.stdoutRawBuffer.length > 128 * 1024) {
+        this.stdoutRawBuffer = this.stdoutRawBuffer.slice(-64 * 1024);
+      }
+    }
     const event = this.parser.feed(line);
     if (event !== null) this.dispatchEvent(event);
   }
@@ -226,6 +234,16 @@ export class ClaudeProcess extends EventEmitter {
     this.emit("stderr", line);
   }
 
+  private extractErrorFromStdout(): string | undefined {
+    for (const ev of this.captured) {
+      if (ev.type === "parse_error" && ev.raw.length > 0) {
+        return ev.raw.slice(0, 500);
+      }
+    }
+    if (this.resultErrorMessage) return this.resultErrorMessage;
+    return undefined;
+  }
+
   private dispatchEvent(event: ClaudeStreamEvent): void {
     if (this.captureEvents && this.captured.length < this.maxQueue) {
       this.captured.push(event);
@@ -239,8 +257,15 @@ export class ClaudeProcess extends EventEmitter {
       if (typeof event.total_cost_usd === "number") {
         this.resultEventCost = event.total_cost_usd;
       }
-      if (event.subtype === "error" && typeof event.result === "string") {
-        this.resultErrorMessage = event.result;
+      if (event.subtype.startsWith("error")) {
+        const errors = (event as Record<string, unknown>).errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+          this.resultErrorMessage = String(errors[0]);
+        } else if (typeof event.result === "string") {
+          this.resultErrorMessage = event.result;
+        } else {
+          this.resultErrorMessage = `Claude error: ${event.subtype}`;
+        }
       }
     }
 
@@ -335,7 +360,9 @@ export class ClaudeProcess extends EventEmitter {
             : finalStatus === "killed"
               ? (this.killReason ?? "killed")
               : finalStatus === "error"
-                ? this.stderrBuffer.trim() || `exit code ${this.exitCode ?? -1}`
+                ? this.stderrBuffer.trim() ||
+                  this.extractErrorFromStdout() ||
+                  `exit code ${this.exitCode ?? -1}`
                 : undefined);
 
       const result: ExecutionResult = {
@@ -349,6 +376,9 @@ export class ClaudeProcess extends EventEmitter {
       };
       if (errorMessage !== undefined) result.errorMessage = errorMessage;
       if (this.stderrBuffer.length > 0) result.stderrRaw = this.stderrBuffer;
+      if (finalStatus === "error" && this.stdoutRawBuffer.length > 0) {
+        result.stdoutRaw = this.stdoutRawBuffer.slice(-10_000);
+      }
       return result;
     })();
     return this.waitPromise;

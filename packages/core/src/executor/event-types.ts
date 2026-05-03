@@ -90,7 +90,7 @@ export type ToolResultEvent = z.infer<typeof toolResultEventSchema>;
 export const resultEventSchema = z
   .object({
     type: z.literal("result"),
-    subtype: z.union([z.literal("success"), z.literal("error")]),
+    subtype: z.string(),
     duration_ms: z.number().nonnegative(),
     total_cost_usd: z.number().nonnegative().optional(),
     usage: tokenUsageSchema,
