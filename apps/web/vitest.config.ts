@@ -22,6 +22,8 @@ export default defineConfig({
       "app/**/__tests__/**/*.test.tsx",
       "app/**/*.test.ts",
       "app/**/*.test.tsx",
+      "components/**/__tests__/**/*.test.ts",
+      "components/**/__tests__/**/*.test.tsx",
     ],
     exclude: ["**/node_modules/**", "**/.next/**", "**/e2e/**"],
     pool: "threads",

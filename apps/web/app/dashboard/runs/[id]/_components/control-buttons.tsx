@@ -1,15 +1,22 @@
 "use client";
+import { RetryModal } from "@/components/runs/retry-modal";
 import { Button } from "@/components/ui/button";
 import { useRunActions } from "@/hooks/use-run-actions";
 import type { RunStatus } from "@/lib/ui/status";
-import { PauseIcon, PlayIcon, RotateCcwIcon, XCircleIcon } from "lucide-react";
+import { PauseIcon, PlayIcon, XCircleIcon } from "lucide-react";
 
 export function ControlButtons({
   runId,
   status,
+  totalPrompts = 0,
+  lastSucceededPromptIndex = null,
+  failedAtIndex = null,
 }: {
   runId: string;
   status: RunStatus;
+  totalPrompts?: number;
+  lastSucceededPromptIndex?: number | null;
+  failedAtIndex?: number | null;
 }) {
   const actions = useRunActions(runId);
 
@@ -62,15 +69,12 @@ export function ControlButtons({
         </Button>
       )}
       {canRetry && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5"
-          disabled={actions.retry.isPending}
-          onClick={() => actions.retry.mutate()}
-        >
-          <RotateCcwIcon className="size-3.5" /> Reintentar
-        </Button>
+        <RetryModal
+          runId={runId}
+          totalPrompts={totalPrompts}
+          lastSucceededPromptIndex={lastSucceededPromptIndex}
+          failedAtIndex={failedAtIndex}
+        />
       )}
     </div>
   );

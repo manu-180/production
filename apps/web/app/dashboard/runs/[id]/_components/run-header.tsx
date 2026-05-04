@@ -85,7 +85,15 @@ export function RunHeader({ run }: { run: RunDetailCache }) {
           </div>
         </div>
 
-        <ControlButtons runId={run.id} status={status} />
+        <ControlButtons
+          runId={run.id}
+          status={status}
+          totalPrompts={run.executions.length}
+          lastSucceededPromptIndex={run.last_succeeded_prompt_index ?? null}
+          failedAtIndex={
+            run.executions.find((e) => e.status === "failed")?.prompts?.order_index ?? null
+          }
+        />
       </div>
     </header>
   );
