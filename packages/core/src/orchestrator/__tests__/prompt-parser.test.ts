@@ -40,7 +40,7 @@ Body only.
     expect(parsed.frontmatter.permissionMode).toBe("default");
     expect(parsed.frontmatter.maxTurns).toBe(50);
     expect(parsed.frontmatter.timeoutMs).toBe(600_000);
-    expect(parsed.frontmatter.retries).toBe(0);
+    expect(parsed.frontmatter.retries).toBeUndefined();
     expect(parsed.frontmatter.requiresApproval).toBe(false);
     expect(parsed.frontmatter.rollbackOnFail).toBe(false);
     expect(parsed.frontmatter.tags).toEqual([]);

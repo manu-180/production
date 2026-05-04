@@ -32,8 +32,10 @@ const PromptFrontmatterSchema = z.object({
   /** Wall-clock timeout in milliseconds (default: 10 minutes). */
   timeoutMs: z.number().int().positive().default(600_000),
 
-  /** Number of automatic retries on transient failure (0–5). */
-  retries: z.number().int().min(0).max(5).default(0),
+  idleTimeoutMs: z.number().int().positive().optional(),
+
+  /** Number of automatic retries on transient failure (0–10). Undefined → orchestrator uses DEFAULT_PROMPT_RETRIES. */
+  retries: z.number().int().min(0).max(10).optional(),
 
   /** If true, the run pauses for human approval before executing this prompt. */
   requiresApproval: z.boolean().default(false),

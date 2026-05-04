@@ -61,6 +61,7 @@ export class PauseController {
   private cancelled = false;
   private cancelReason = "";
   private resumeDeferred: Deferred<void> | null = null;
+  private cancelController = new AbortController();
 
   pause(): void {
     if (this.cancelled || this.paused) return;
@@ -82,6 +83,7 @@ export class PauseController {
     if (this.cancelled) return;
     this.cancelled = true;
     this.cancelReason = reason;
+    this.cancelController.abort();
     const deferred = this.resumeDeferred;
     this.resumeDeferred = null;
     this.paused = false;
@@ -92,6 +94,10 @@ export class PauseController {
 
   isCancelled(): boolean {
     return this.cancelled;
+  }
+
+  getSignal(): AbortSignal {
+    return this.cancelController.signal;
   }
 
   getCancelReason(): string {
@@ -121,6 +127,7 @@ export class PauseController {
     this.cancelled = false;
     this.cancelReason = "";
     this.resumeDeferred = null;
+    this.cancelController = new AbortController();
     if (deferred) {
       // Reject any in-flight waiters so they don't hang forever after a reset.
       deferred.reject(new CancelledError("Controller reset"));

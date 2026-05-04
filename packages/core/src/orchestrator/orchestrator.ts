@@ -17,6 +17,7 @@ import {
   type ClaudeProcessOptions,
   type ExecutionResult,
   ExecutorError,
+  type ExecutorErrorCode,
   isAssistantEvent,
 } from "../executor/index.js";
 import type { ClaudeStreamEvent, TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
@@ -31,6 +32,12 @@ import type { GuardianDecision, Plan, PromptDefinition, RunEvent, TokenUsage } f
 import { type ExecutionContext, addUsage, createExecutionContext } from "./execution-context.js";
 import { CancelledError, type PauseController } from "./pause-controller.js";
 import { ProgressEmitter } from "./progress-emitter.js";
+
+/**
+ * Default retries per prompt when frontmatter doesn't specify.
+ * 1 initial attempt + 2 retries = 3 total attempts (aligned with DEFAULT_RETRY_POLICY.maxAttempts).
+ */
+export const DEFAULT_PROMPT_RETRIES = 2;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase-stub interfaces (CheckpointManager: phase 08)
@@ -191,6 +198,9 @@ export function buildClaudeOptions(
   if (typeof fm.timeoutMs === "number") {
     opts.timeoutMs = fm.timeoutMs;
   }
+  if (typeof fm.idleTimeoutMs === "number") {
+    opts.idleTimeoutMs = fm.idleTimeoutMs;
+  }
   if (typeof fm.maxBudgetUsd === "number") {
     opts.maxBudgetUsd = fm.maxBudgetUsd;
   }
@@ -234,6 +244,21 @@ function errorMessage(err: unknown): string {
  * - Anything else: treated as transient unknown — retryable with default
  *   exponential backoff. Same generosity the legacy `backoff()` had.
  */
+function buildErrorCode(args: {
+  isGuardianLoop: boolean;
+  classified: ClassifiedError | null;
+  executorErrCode: ExecutorErrorCode | string | null;
+}): string {
+  if (args.isGuardianLoop) return "GUARDIAN_LOOP";
+  if (args.classified !== null && args.classified.category !== "unknown") {
+    return args.classified.category.toUpperCase();
+  }
+  if (typeof args.executorErrCode === "string" && args.executorErrCode.length > 0) {
+    return args.executorErrCode;
+  }
+  return "UNKNOWN";
+}
+
 function classifyRetry(
   err: unknown,
   attempt: number,
@@ -257,9 +282,20 @@ function classifyRetry(
   };
 }
 
-async function sleep(ms: number): Promise<void> {
+async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) return;
-  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error("aborted"));
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        reject(new Error("aborted"));
+      },
+      { once: true },
+    );
+  });
 }
 
 /**
@@ -443,6 +479,71 @@ export async function updatePromptExecution(
   }
 }
 
+/**
+ * Inserts a `prompt_executions` row with `status='skipped'` for a prompt
+ * bypassed during a resume operation. Best-effort — errors are logged but
+ * never thrown so they don't interrupt the run.
+ */
+export async function markPromptSkipped(
+  db: DbClient,
+  runId: string,
+  promptId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    const { error } = await db.from("prompt_executions").insert({
+      run_id: runId,
+      prompt_id: promptId,
+      attempt: 0,
+      status: "skipped",
+      error_code: reason,
+      started_at: isoNow(),
+      finished_at: isoNow(),
+    });
+    if (error !== null && error !== undefined) {
+      console.warn(`[Orchestrator] markPromptSkipped(${runId}, ${promptId}) error:`, error);
+    }
+  } catch (err) {
+    console.warn(`[Orchestrator] markPromptSkipped(${runId}, ${promptId}) threw:`, err);
+  }
+}
+
+/**
+ * Sets `runs.last_succeeded_prompt_index` to record how far execution
+ * progressed. Errors are logged but never thrown.
+ */
+async function updateLastSucceededIndex(db: DbClient, runId: string, index: number): Promise<void> {
+  try {
+    const { error } = await db
+      .from("runs")
+      .update({ last_succeeded_prompt_index: index })
+      .eq("id", runId);
+    if (error !== null && error !== undefined) {
+      console.warn(`[Orchestrator] updateLastSucceededIndex(${runId}, ${index}) error:`, error);
+    }
+  } catch (err) {
+    console.warn(`[Orchestrator] updateLastSucceededIndex(${runId}, ${index}) threw:`, err);
+  }
+}
+
+/**
+ * Clears `resume_from_index` and `resume_session_id` on the run row once
+ * they've been consumed. Errors are logged but never thrown.
+ */
+async function clearResumeState(db: DbClient, runId: string): Promise<void> {
+  try {
+    const { error } = await db
+      .from("runs")
+      .update({ resume_from_index: null, resume_session_id: null })
+      .eq("id", runId);
+    if (error !== null && error !== undefined) {
+      console.warn(`[Orchestrator] clearResumeState(${runId}) error:`, error);
+    }
+  } catch (err) {
+    console.warn(`[Orchestrator] clearResumeState(${runId}) threw:`, err);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,8 +632,26 @@ export class Orchestrator {
    */
   async run(): Promise<RunResult> {
     const startTime = Date.now();
-    const context = createExecutionContext(this.runId, this.workingDir);
     const sortedPrompts = [...this.plan.prompts].sort((a, b) => a.order - b.order);
+
+    const { data: runData } = await this.db
+      .from("runs")
+      .select("resume_from_index,resume_session_id")
+      .eq("id", this.runId)
+      .single();
+    const resumeFromIndex = (runData?.["resume_from_index"] as number | null) ?? 0;
+    const initialResumeSessionId = (runData?.["resume_session_id"] as string | null) ?? undefined;
+
+    if (resumeFromIndex > 0) {
+      console.info(
+        `[Orchestrator] resuming run ${this.runId} from index ${resumeFromIndex} (total: ${sortedPrompts.length}, hasSessionId: ${initialResumeSessionId !== undefined})`,
+      );
+    }
+
+    const context = createExecutionContext(this.runId, this.workingDir);
+    if (initialResumeSessionId !== undefined) {
+      context.lastSessionId = initialResumeSessionId;
+    }
 
     await updateRunStatus(this.runId, "running", this.db);
     await this.emit({ type: "run.started", runId: this.runId });
@@ -542,6 +661,13 @@ export class Orchestrator {
     for (let i = 0; i < sortedPrompts.length; i++) {
       const prompt = sortedPrompts[i];
       if (!prompt) continue;
+
+      if (i < resumeFromIndex) {
+        await markPromptSkipped(this.db, this.runId, prompt.id, "resumed_from_index");
+        console.info(`[Orchestrator] skipping prompt ${prompt.id} (index ${i}) for resume`);
+        context.currentPromptIndex++;
+        continue;
+      }
 
       // Honor skip requests before doing any work for this prompt.
       // No `prompt.skipped` variant exists in RunEvent yet, so we emit
@@ -603,7 +729,8 @@ export class Orchestrator {
         total: sortedPrompts.length,
       });
 
-      const maxAttempts = (prompt.frontmatter.retries ?? 0) + 1;
+      const retries = prompt.frontmatter.retries ?? DEFAULT_PROMPT_RETRIES;
+      const maxAttempts = Math.max(1, retries + 1);
       let attempt = 1;
       let lastError: string | undefined;
       let succeeded = false;
@@ -624,7 +751,19 @@ export class Orchestrator {
             willRetry,
           });
           if (willRetry) {
-            await sleep(nextDelay(DEFAULT_RETRY_POLICY, attempt));
+            await sleep(
+              nextDelay(DEFAULT_RETRY_POLICY, attempt),
+              this.pauseController.getSignal(),
+            ).catch(() => {});
+            if (this.pauseController.isCancelled()) {
+              await updateRunStatus(this.runId, "cancelled", this.db);
+              return {
+                status: "cancelled",
+                totalCostUsd: context.accumulatedCostUsd,
+                totalDurationMs: Date.now() - startTime,
+                completedPrompts: context.currentPromptIndex,
+              };
+            }
             attempt++;
             continue;
           }
@@ -680,7 +819,10 @@ export class Orchestrator {
                   reject(new CancelledError(pauseController.getCancelReason()));
                 }
               }, 500);
-              void proc.wait().finally(() => clearInterval(checkCancel));
+              proc
+                .wait()
+                .finally(() => clearInterval(checkCancel))
+                .catch(() => undefined);
             });
 
             try {
@@ -840,6 +982,7 @@ export class Orchestrator {
           }
 
           await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
+          await updateLastSucceededIndex(this.db, this.runId, i);
 
           if (result.sessionId.length > 0) {
             context.lastSessionId = result.sessionId;
@@ -863,11 +1006,12 @@ export class Orchestrator {
           // wait. Anything else uses the default exponential-jitter backoff.
           const decision = classifyRetry(err, attempt);
           const isGuardianLoop = err instanceof GuardianLoopError;
-          const errCode = isGuardianLoop
-            ? "GUARDIAN_LOOP"
-            : decision.classified !== null
-              ? decision.classified.category.toUpperCase()
-              : "UNKNOWN";
+          const executorErrCode = err instanceof ExecutorError ? err.code : null;
+          const errCode = buildErrorCode({
+            isGuardianLoop,
+            classified: decision.classified,
+            executorErrCode,
+          });
 
           const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
           const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
@@ -896,7 +1040,16 @@ export class Orchestrator {
           });
 
           if (willRetry) {
-            await sleep(decision.waitMs);
+            await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
+            if (this.pauseController.isCancelled()) {
+              await updateRunStatus(this.runId, "cancelled", this.db);
+              return {
+                status: "cancelled",
+                totalCostUsd: context.accumulatedCostUsd,
+                totalDurationMs: Date.now() - startTime,
+                completedPrompts: context.currentPromptIndex,
+              };
+            }
             attempt++;
             continue;
           }
@@ -916,6 +1069,7 @@ export class Orchestrator {
       }
 
       await updateRunStatus(this.runId, "failed", this.db);
+      await clearResumeState(this.db, this.runId);
       const finalError = lastError ?? "unknown error";
       await this.emit({
         type: "run.failed",
@@ -935,6 +1089,7 @@ export class Orchestrator {
     // All prompts completed.
     const totalDurationMs = Date.now() - startTime;
     await updateRunStatus(this.runId, "completed", this.db);
+    await clearResumeState(this.db, this.runId);
     await this.emit({
       type: "run.completed",
       totalCostUsd: context.accumulatedCostUsd,
