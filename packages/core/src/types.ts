@@ -33,6 +33,7 @@ export interface PromptFrontmatter {
   maxTurns?: number;
   maxBudgetUsd?: number;
   timeoutMs?: number;
+  idleTimeoutMs?: number;
   retries?: number;
   requiresApproval?: boolean;
   rollbackOnFail?: boolean;

@@ -19,11 +19,23 @@ describe("buildClaudeArgs", () => {
   it("includes minimal args", () => {
     const args = buildClaudeArgs({ prompt: "hello", workingDir: "/w" });
     expect(args[0]).toBe("-p");
-    expect(args[1]).toBe("hello");
+    // The prompt is fed via stdin (not as a positional arg) so it must NOT
+    // appear in the args list. This is what protects us from cmd.exe's
+    // 8191-char limit on Windows when prompts are large.
+    expect(args).not.toContain("hello");
     expect(args).toContain("--output-format");
     expect(getFlag(args, "--output-format")).toBe("stream-json");
     expect(args).toContain("--include-partial-messages");
     expect(args).toContain("--verbose");
+  });
+
+  it("does not put a large prompt on the command line", () => {
+    const huge = "x".repeat(20_000);
+    const args = buildClaudeArgs({ prompt: huge, workingDir: "/w" });
+    // Even a 20KB prompt must keep args well under cmd.exe's 8191-char limit.
+    const totalLen = args.reduce((acc, a) => acc + a.length + 1, 0);
+    expect(totalLen).toBeLessThan(2000);
+    expect(args).not.toContain(huge);
   });
 
   it("always includes base system prompt", () => {

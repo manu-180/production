@@ -24,7 +24,13 @@ export function buildClaudeArgs(opts: ClaudeCommandOptions): string[] {
     throw new Error("buildClaudeArgs: workingDir is required");
   }
 
-  const args: string[] = ["-p", opts.prompt];
+  // The prompt goes via stdin (see ClaudeProcess.start()), NOT as a positional
+  // argument. On Windows, `shell: true` routes the command through cmd.exe,
+  // which has a hard 8191-character limit on the full command line. Prompts
+  // larger than ~7KB blew past that and crashed with "command line too long"
+  // before any stdio was captured. `claude -p` reads from stdin when no
+  // positional prompt is provided, sidestepping the cmd.exe limit entirely.
+  const args: string[] = ["-p"];
 
   if (opts.bare !== true) {
     args.push("--output-format", "stream-json");

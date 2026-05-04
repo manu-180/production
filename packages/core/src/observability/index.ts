@@ -30,3 +30,4 @@ export {
 
 export { toCsv } from "./exporters/csv-exporter.js";
 export { toJson, toJsonL } from "./exporters/json-exporter.js";
+export { startPromptHeartbeat, type PromptHeartbeat } from "./prompt-heartbeat.js";

@@ -22,6 +22,7 @@ import {
 } from "../executor/index.js";
 import type { ClaudeStreamEvent, TokenUsage as ExecutorTokenUsage } from "../executor/index.js";
 import type { GuardianRunner } from "../guardian/guardian-runner.js";
+import { startPromptHeartbeat } from "../observability/prompt-heartbeat.js";
 import {
   type ClassifiedError,
   DEFAULT_RETRY_POLICY,
@@ -404,9 +405,18 @@ export async function updateRunStatus(
 }
 
 /**
- * Inserts a `prompt_executions` row in `running` state and returns its id.
- * Throws if the row could not be created — without an executionId we cannot
- * later record the outcome.
+ * Creates (or claims) a `prompt_executions` row in `running` state and
+ * returns its id. Throws if the row could not be created — without an
+ * executionId we cannot later record the outcome.
+ *
+ * Behavior:
+ *  - On the first attempt for a prompt within a run, the SQL function
+ *    `enqueue_run` already inserted a stub row with `status='pending'`.
+ *    We claim that stub by flipping it to `running` so the dashboard
+ *    doesn't end up with phantom "pendiente" rows shadowing each
+ *    successful execution.
+ *  - On retries (or when the stub is missing for any reason), we INSERT
+ *    a fresh row.
  */
 export async function createPromptExecution(
   prompt: PromptDefinition,
@@ -414,12 +424,50 @@ export async function createPromptExecution(
   runId: string,
   db: DbClient,
 ): Promise<string> {
+  const startedAt = isoNow();
+
+  // First attempt — try to claim the pre-created `pending` stub from
+  // enqueue_run. Filtering on status='pending' makes this idempotent: if
+  // a previous worker already claimed it the update affects zero rows
+  // and we fall through to the INSERT branch.
+  if (attempt === 1) {
+    try {
+      const { data, error } = await db
+        .from("prompt_executions")
+        .update({
+          attempt,
+          status: "running",
+          started_at: startedAt,
+          last_progress_at: startedAt,
+        })
+        .eq("run_id", runId)
+        .eq("prompt_id", prompt.id)
+        .eq("status", "pending")
+        .select("id")
+        .single();
+
+      if (error === null || error === undefined) {
+        const id = data?.["id"];
+        if (typeof id === "string" && id.length > 0) {
+          return id;
+        }
+      }
+      // No stub matched (PGRST116 / single() returned no row) — fall through
+      // to INSERT. This covers retries triggered before the orchestrator
+      // booted on a fresh worker, and any data drift.
+    } catch {
+      // Best-effort claim: any unexpected error here means we just create
+      // a new row instead. The INSERT path below is the source of truth.
+    }
+  }
+
   const row: Record<string, unknown> = {
     run_id: runId,
     prompt_id: prompt.id,
     attempt,
     status: "running",
-    started_at: isoNow(),
+    started_at: startedAt,
+    last_progress_at: startedAt,
   };
   const { data, error } = await db.from("prompt_executions").insert(row).select("id").single();
   if (error !== null && error !== undefined) {
@@ -770,69 +818,283 @@ export class Orchestrator {
           break;
         }
 
+        const heartbeat = startPromptHeartbeat(this.db, executionId);
         try {
-          // Guardian intervention loop. Every iteration spawns a Claude
-          // process and waits for it. On success, the Guardian (if
-          // configured) inspects the last assistant message; when it detects
-          // a question it returns a `guardianResponse` we resume the session
-          // with as the next prompt. The loop ends when either Guardian
-          // declines to intervene (success path) or it hits the intervention
-          // ceiling (terminal `GUARDIAN_LOOP` failure).
-          let guardianInterventionCount = 0;
-          let nextPromptText: string | null = null;
-          let nextResumeSessionId: string | null = null;
-          let result: ExecutionResult;
-          const toolsUsedThisPrompt = new Set<string>();
+          try {
+            // Guardian intervention loop. Every iteration spawns a Claude
+            // process and waits for it. On success, the Guardian (if
+            // configured) inspects the last assistant message; when it detects
+            // a question it returns a `guardianResponse` we resume the session
+            // with as the next prompt. The loop ends when either Guardian
+            // declines to intervene (success path) or it hits the intervention
+            // ceiling (terminal `GUARDIAN_LOOP` failure).
+            let guardianInterventionCount = 0;
+            let nextPromptText: string | null = null;
+            let nextResumeSessionId: string | null = null;
+            let result: ExecutionResult;
+            const toolsUsedThisPrompt = new Set<string>();
 
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const baseOpts = buildClaudeOptions(prompt, context);
-            const claudeOpts: ClaudeProcessOptions = { ...baseOpts };
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const baseOpts = buildClaudeOptions(prompt, context);
+              const claudeOpts: ClaudeProcessOptions = { ...baseOpts };
 
-            if (nextPromptText !== null) {
-              // Guardian is feeding a follow-up answer back into the same
-              // session — override prompt + resumeSessionId regardless of
-              // what `buildClaudeOptions` produced.
-              claudeOpts.prompt = nextPromptText;
-              if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
-                claudeOpts.resumeSessionId = nextResumeSessionId;
+              if (nextPromptText !== null) {
+                // Guardian is feeding a follow-up answer back into the same
+                // session — override prompt + resumeSessionId regardless of
+                // what `buildClaudeOptions` produced.
+                claudeOpts.prompt = nextPromptText;
+                if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
+                  claudeOpts.resumeSessionId = nextResumeSessionId;
+                }
+              } else if (this.guardian) {
+                // First iteration of this attempt — inject Guardian guidelines
+                // into the prompt body so Claude has the rules from the start.
+                const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
+                claudeOpts.prompt = injection.prompt;
               }
-            } else if (this.guardian) {
-              // First iteration of this attempt — inject Guardian guidelines
-              // into the prompt body so Claude has the rules from the start.
-              const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
-              claudeOpts.prompt = injection.prompt;
+
+              claudeOpts.onActivity = () => {
+                heartbeat.notifyActivity();
+              };
+              const proc = new ClaudeProcess(claudeOpts, buildEnv());
+              await proc.start();
+
+              // Race the process against the pause controller's cancel flag.
+              // If the user cancels mid-execution, we kill the spawned Claude
+              // process instead of waiting for the next prompt boundary.
+              const pauseController = this.pauseController;
+              const cancelPromise = new Promise<never>((_resolve, reject) => {
+                const checkCancel = setInterval(() => {
+                  if (pauseController.isCancelled()) {
+                    clearInterval(checkCancel);
+                    void proc.kill("user cancelled");
+                    reject(new CancelledError(pauseController.getCancelReason()));
+                  }
+                }, 500);
+                proc
+                  .wait()
+                  .finally(() => clearInterval(checkCancel))
+                  .catch(() => undefined);
+              });
+
+              try {
+                result = await Promise.race([proc.wait(), cancelPromise]);
+              } catch (raceErr) {
+                if (raceErr instanceof CancelledError) {
+                  await updatePromptExecution(executionId, "failed", null, "", this.db, {
+                    code: "CANCELLED",
+                    message: raceErr.message,
+                  });
+                  await updateRunStatus(this.runId, "cancelled", this.db);
+                  return {
+                    status: "cancelled",
+                    totalCostUsd: context.accumulatedCostUsd,
+                    totalDurationMs: Date.now() - startTime,
+                    completedPrompts: context.currentPromptIndex,
+                  };
+                }
+                throw raceErr;
+              }
+
+              // Stream tool_use / tool_result events to the progress emitter.
+              for (const event of result.capturedEvents) {
+                if (event.type === "tool_use") {
+                  toolsUsedThisPrompt.add(event.name);
+                  await this.emit({
+                    type: "prompt.tool_use",
+                    promptId: prompt.id,
+                    tool: event.name,
+                    input: event.input,
+                  });
+                } else if (event.type === "tool_result") {
+                  await this.emit({
+                    type: "prompt.tool_result",
+                    promptId: prompt.id,
+                    tool: event.tool_use_id,
+                    output: event.content,
+                  });
+                }
+              }
+
+              if (result.finalStatus !== "success") {
+                // Non-success terminal status from the Claude process. Bubble
+                // up to the outer `catch` so retry/backoff kicks in.
+                const procErrMsg =
+                  result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
+                const err = new Error(procErrMsg);
+                (err as Error & { stderrRaw?: string; stdoutRaw?: string }).stderrRaw =
+                  result.stderrRaw;
+                (err as Error & { stdoutRaw?: string }).stdoutRaw = result.stdoutRaw;
+                throw err;
+              }
+
+              // Always accumulate usage for completed turns — even mid-Guardian
+              // iterations spent real tokens.
+              addUsage(context, mapTokenUsage(result.usage), result.costUsd);
+
+              // Guardian wiring: inspect the last assistant message and decide
+              // whether to feed a follow-up back into the same session.
+              if (this.guardian) {
+                const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
+                const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
+                const promptContext = buildPromptContext(prompt);
+
+                // Note: the executor does not surface a top-level `stopReason`,
+                // so we omit it here. The detector falls back to other signals
+                // (heuristics on the message text + `hasToolUse`) when stopReason
+                // is missing.
+                const intervention = await this.guardian.checkAndDecide({
+                  lastAssistantMessage,
+                  hasToolUse,
+                  promptContext,
+                  recentMessages,
+                  currentInterventionCount: guardianInterventionCount,
+                });
+
+                if (intervention.loopLimitReached) {
+                  throw new GuardianLoopError("Guardian exceeded maximum interventions");
+                }
+
+                if (intervention.intervened && intervention.guardianResponse) {
+                  const decision = intervention.decision;
+                  const detection = intervention.detectionResult;
+                  if (decision && detection) {
+                    const guardianDecision: GuardianDecision = {
+                      id: `${executionId}:gi:${intervention.interventionCount}`,
+                      promptExecutionId: executionId,
+                      questionDetected: detection.extractedQuestion ?? lastAssistantMessage,
+                      reasoning: decision.reasoning,
+                      decision: decision.decision,
+                      confidence: decision.confidence,
+                      strategy: decision.strategy === "llm" ? "llm" : "heuristic",
+                      decidedAt: isoNow(),
+                    };
+                    await this.emit({
+                      type: "prompt.guardian_intervention",
+                      decision: guardianDecision,
+                    });
+                  }
+
+                  // Update lastSessionId so any later prompt that resumes this
+                  // session does so from the most recent turn.
+                  if (result.sessionId.length > 0) {
+                    context.lastSessionId = result.sessionId;
+                  }
+
+                  guardianInterventionCount = intervention.interventionCount;
+                  nextPromptText = intervention.guardianResponse;
+                  nextResumeSessionId = result.sessionId;
+                  continue;
+                }
+              }
+
+              // No intervention required — the prompt is done.
+              break;
             }
 
-            const proc = new ClaudeProcess(claudeOpts, buildEnv());
-            await proc.start();
-
-            // Race the process against the pause controller's cancel flag.
-            // If the user cancels mid-execution, we kill the spawned Claude
-            // process instead of waiting for the next prompt boundary.
-            const pauseController = this.pauseController;
-            const cancelPromise = new Promise<never>((_resolve, reject) => {
-              const checkCancel = setInterval(() => {
-                if (pauseController.isCancelled()) {
-                  clearInterval(checkCancel);
-                  void proc.kill("user cancelled");
-                  reject(new CancelledError(pauseController.getCancelReason()));
+            // ── Successful prompt completion ──────────────────────────────
+            let sha = "";
+            if (this.checkpoint) {
+              // Feed execution metadata to the checkpoint manager (if it supports
+              // it) so commit messages can include per-prompt stats. Best-effort
+              // — failures here must not block commit.
+              if (typeof this.checkpoint.setExecutionMeta === "function") {
+                try {
+                  const usage = mapTokenUsage(result.usage);
+                  this.checkpoint.setExecutionMeta(prompt.id, {
+                    tokensIn: usage.input,
+                    tokensOut: usage.output,
+                    tokensCache: usage.cacheRead + usage.cacheCreation,
+                    costUsd: result.costUsd,
+                    durationMs: result.durationMs,
+                    toolsUsed: Array.from(toolsUsedThisPrompt),
+                    guardianDecisions: guardianInterventionCount,
+                  });
+                } catch (metaErr) {
+                  console.error(
+                    `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${prompt.id}:`,
+                    metaErr,
+                  );
                 }
-              }, 500);
-              proc
-                .wait()
-                .finally(() => clearInterval(checkCancel))
-                .catch(() => undefined);
+              }
+              try {
+                sha = await this.checkpoint.commit(prompt.id, executionId);
+                lastGoodSha = sha;
+                await this.emit({
+                  type: "prompt.checkpoint_created",
+                  promptId: prompt.id,
+                  sha,
+                });
+              } catch (err) {
+                console.error(
+                  `[Orchestrator] checkpoint.commit failed for prompt ${prompt.id}:`,
+                  err,
+                );
+              }
+            }
+
+            await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
+            await updateLastSucceededIndex(this.db, this.runId, i);
+
+            if (result.sessionId.length > 0) {
+              context.lastSessionId = result.sessionId;
+            }
+
+            await this.emit({
+              type: "prompt.completed",
+              promptId: prompt.id,
+              tokens: mapTokenUsage(result.usage),
+              costUsd: result.costUsd,
             });
 
-            try {
-              result = await Promise.race([proc.wait(), cancelPromise]);
-            } catch (raceErr) {
-              if (raceErr instanceof CancelledError) {
-                await updatePromptExecution(executionId, "failed", null, "", this.db, {
-                  code: "CANCELLED",
-                  message: raceErr.message,
-                });
+            context.currentPromptIndex++;
+            succeeded = true;
+            break;
+          } catch (err) {
+            lastError = errorMessage(err);
+            // Recovery-aware classification: GuardianLoopError + non-retryable
+            // ExecutorError categories (auth/config/system) break out
+            // immediately. Rate-limited errors carry a `Retry-After`-derived
+            // wait. Anything else uses the default exponential-jitter backoff.
+            const decision = classifyRetry(err, attempt);
+            const isGuardianLoop = err instanceof GuardianLoopError;
+            const executorErrCode = err instanceof ExecutorError ? err.code : null;
+            const errCode = buildErrorCode({
+              isGuardianLoop,
+              classified: decision.classified,
+              executorErrCode,
+            });
+
+            const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
+            const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
+            await updatePromptExecution(executionId, "failed", null, "", this.db, {
+              code: errCode,
+              message: lastError,
+              raw: rawDiag,
+            });
+
+            const willRetry = decision.retry && attempt < maxAttempts;
+
+            if (decision.classified?.category === "rate_limit") {
+              await this.emit({
+                type: "prompt.rate_limited",
+                promptId: prompt.id,
+                waitMs: decision.waitMs,
+                attempt,
+              });
+            }
+
+            await this.emit({
+              type: "prompt.failed",
+              promptId: prompt.id,
+              error: lastError,
+              willRetry,
+            });
+
+            if (willRetry) {
+              await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
+              if (this.pauseController.isCancelled()) {
                 await updateRunStatus(this.runId, "cancelled", this.db);
                 return {
                   status: "cancelled",
@@ -841,219 +1103,13 @@ export class Orchestrator {
                   completedPrompts: context.currentPromptIndex,
                 };
               }
-              throw raceErr;
+              attempt++;
+              continue;
             }
-
-            // Stream tool_use / tool_result events to the progress emitter.
-            for (const event of result.capturedEvents) {
-              if (event.type === "tool_use") {
-                toolsUsedThisPrompt.add(event.name);
-                await this.emit({
-                  type: "prompt.tool_use",
-                  promptId: prompt.id,
-                  tool: event.name,
-                  input: event.input,
-                });
-              } else if (event.type === "tool_result") {
-                await this.emit({
-                  type: "prompt.tool_result",
-                  promptId: prompt.id,
-                  tool: event.tool_use_id,
-                  output: event.content,
-                });
-              }
-            }
-
-            if (result.finalStatus !== "success") {
-              // Non-success terminal status from the Claude process. Bubble
-              // up to the outer `catch` so retry/backoff kicks in.
-              const procErrMsg =
-                result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
-              const err = new Error(procErrMsg);
-              (err as Error & { stderrRaw?: string; stdoutRaw?: string }).stderrRaw =
-                result.stderrRaw;
-              (err as Error & { stdoutRaw?: string }).stdoutRaw = result.stdoutRaw;
-              throw err;
-            }
-
-            // Always accumulate usage for completed turns — even mid-Guardian
-            // iterations spent real tokens.
-            addUsage(context, mapTokenUsage(result.usage), result.costUsd);
-
-            // Guardian wiring: inspect the last assistant message and decide
-            // whether to feed a follow-up back into the same session.
-            if (this.guardian) {
-              const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
-              const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
-              const promptContext = buildPromptContext(prompt);
-
-              // Note: the executor does not surface a top-level `stopReason`,
-              // so we omit it here. The detector falls back to other signals
-              // (heuristics on the message text + `hasToolUse`) when stopReason
-              // is missing.
-              const intervention = await this.guardian.checkAndDecide({
-                lastAssistantMessage,
-                hasToolUse,
-                promptContext,
-                recentMessages,
-                currentInterventionCount: guardianInterventionCount,
-              });
-
-              if (intervention.loopLimitReached) {
-                throw new GuardianLoopError("Guardian exceeded maximum interventions");
-              }
-
-              if (intervention.intervened && intervention.guardianResponse) {
-                const decision = intervention.decision;
-                const detection = intervention.detectionResult;
-                if (decision && detection) {
-                  const guardianDecision: GuardianDecision = {
-                    id: `${executionId}:gi:${intervention.interventionCount}`,
-                    promptExecutionId: executionId,
-                    questionDetected: detection.extractedQuestion ?? lastAssistantMessage,
-                    reasoning: decision.reasoning,
-                    decision: decision.decision,
-                    confidence: decision.confidence,
-                    strategy: decision.strategy === "llm" ? "llm" : "heuristic",
-                    decidedAt: isoNow(),
-                  };
-                  await this.emit({
-                    type: "prompt.guardian_intervention",
-                    decision: guardianDecision,
-                  });
-                }
-
-                // Update lastSessionId so any later prompt that resumes this
-                // session does so from the most recent turn.
-                if (result.sessionId.length > 0) {
-                  context.lastSessionId = result.sessionId;
-                }
-
-                guardianInterventionCount = intervention.interventionCount;
-                nextPromptText = intervention.guardianResponse;
-                nextResumeSessionId = result.sessionId;
-                continue;
-              }
-            }
-
-            // No intervention required — the prompt is done.
             break;
           }
-
-          // ── Successful prompt completion ──────────────────────────────
-          let sha = "";
-          if (this.checkpoint) {
-            // Feed execution metadata to the checkpoint manager (if it supports
-            // it) so commit messages can include per-prompt stats. Best-effort
-            // — failures here must not block commit.
-            if (typeof this.checkpoint.setExecutionMeta === "function") {
-              try {
-                const usage = mapTokenUsage(result.usage);
-                this.checkpoint.setExecutionMeta(prompt.id, {
-                  tokensIn: usage.input,
-                  tokensOut: usage.output,
-                  tokensCache: usage.cacheRead + usage.cacheCreation,
-                  costUsd: result.costUsd,
-                  durationMs: result.durationMs,
-                  toolsUsed: Array.from(toolsUsedThisPrompt),
-                  guardianDecisions: guardianInterventionCount,
-                });
-              } catch (metaErr) {
-                console.error(
-                  `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${prompt.id}:`,
-                  metaErr,
-                );
-              }
-            }
-            try {
-              sha = await this.checkpoint.commit(prompt.id, executionId);
-              lastGoodSha = sha;
-              await this.emit({
-                type: "prompt.checkpoint_created",
-                promptId: prompt.id,
-                sha,
-              });
-            } catch (err) {
-              console.error(
-                `[Orchestrator] checkpoint.commit failed for prompt ${prompt.id}:`,
-                err,
-              );
-            }
-          }
-
-          await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
-          await updateLastSucceededIndex(this.db, this.runId, i);
-
-          if (result.sessionId.length > 0) {
-            context.lastSessionId = result.sessionId;
-          }
-
-          await this.emit({
-            type: "prompt.completed",
-            promptId: prompt.id,
-            tokens: mapTokenUsage(result.usage),
-            costUsd: result.costUsd,
-          });
-
-          context.currentPromptIndex++;
-          succeeded = true;
-          break;
-        } catch (err) {
-          lastError = errorMessage(err);
-          // Recovery-aware classification: GuardianLoopError + non-retryable
-          // ExecutorError categories (auth/config/system) break out
-          // immediately. Rate-limited errors carry a `Retry-After`-derived
-          // wait. Anything else uses the default exponential-jitter backoff.
-          const decision = classifyRetry(err, attempt);
-          const isGuardianLoop = err instanceof GuardianLoopError;
-          const executorErrCode = err instanceof ExecutorError ? err.code : null;
-          const errCode = buildErrorCode({
-            isGuardianLoop,
-            classified: decision.classified,
-            executorErrCode,
-          });
-
-          const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
-          const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
-          await updatePromptExecution(executionId, "failed", null, "", this.db, {
-            code: errCode,
-            message: lastError,
-            raw: rawDiag,
-          });
-
-          const willRetry = decision.retry && attempt < maxAttempts;
-
-          if (decision.classified?.category === "rate_limit") {
-            await this.emit({
-              type: "prompt.rate_limited",
-              promptId: prompt.id,
-              waitMs: decision.waitMs,
-              attempt,
-            });
-          }
-
-          await this.emit({
-            type: "prompt.failed",
-            promptId: prompt.id,
-            error: lastError,
-            willRetry,
-          });
-
-          if (willRetry) {
-            await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
-            if (this.pauseController.isCancelled()) {
-              await updateRunStatus(this.runId, "cancelled", this.db);
-              return {
-                status: "cancelled",
-                totalCostUsd: context.accumulatedCostUsd,
-                totalDurationMs: Date.now() - startTime,
-                completedPrompts: context.currentPromptIndex,
-              };
-            }
-            attempt++;
-            continue;
-          }
-          break;
+        } finally {
+          heartbeat.stop();
         }
       }
 

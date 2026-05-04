@@ -1,7 +1,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { type Interface, createInterface } from "node:readline";
-import type { Readable } from "node:stream";
+import type { Readable, Writable } from "node:stream";
 import { createLogger } from "../logger.js";
 import {
   type ClaudeCommandOptions,
@@ -17,9 +17,9 @@ import {
   isResultEvent,
 } from "./event-types.js";
 import { StreamParser } from "./stream-parser.js";
-import { DEFAULT_TIMEOUT_MS, TimeoutManager } from "./timeout-manager.js";
+import { DEFAULT_IDLE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, TimeoutManager } from "./timeout-manager.js";
 
-type ClaudeChild = ChildProcessByStdio<null, Readable, Readable>;
+type ClaudeChild = ChildProcessByStdio<Writable, Readable, Readable>;
 
 const log = createLogger("executor:claude-process");
 
@@ -45,8 +45,10 @@ export interface ExecutionResult {
 export interface ClaudeProcessOptions extends ClaudeCommandOptions {
   timeoutMs?: number;
   graceMs?: number;
+  idleTimeoutMs?: number;
   captureEvents?: boolean;
   maxQueueSize?: number;
+  onActivity?: () => void;
 }
 
 interface PendingPull {
@@ -103,6 +105,10 @@ export class ClaudeProcess extends EventEmitter {
         this.finalStatus = "timeout";
         this.emit("timeout");
       },
+      idleTimeoutMs: opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+      onIdleTimeout: () => {
+        this.emit("idle_stall");
+      },
     };
     if (typeof opts.graceMs === "number") {
       timeoutOpts.graceMs = opts.graceMs;
@@ -139,13 +145,36 @@ export class ClaudeProcess extends EventEmitter {
         env: this.env,
         shell: useShell,
         windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
+        // stdin is "pipe" so we can feed the prompt without putting it on the
+        // command line. On Windows this is the difference between working and
+        // hitting cmd.exe's 8191-char limit on prompts >~7KB.
+        stdio: ["pipe", "pipe", "pipe"],
       }) as ClaudeChild;
     } catch (err) {
       throw mapSpawnError(err);
     }
 
     this.child = child;
+
+    // Feed the prompt via stdin and close it. The CLI reads the prompt from
+    // stdin when no positional `[prompt]` argument is provided (see
+    // command-builder.ts). Errors during write are surfaced through the
+    // same channel as spawn errors so the executor can fail fast.
+    try {
+      const stdin = child.stdin;
+      stdin.on("error", (err: NodeJS.ErrnoException) => {
+        // EPIPE is expected if the child died before we finished writing
+        // (e.g. flag validation failed). Surface other errors but don't
+        // crash the worker — the exit handler will produce the final status.
+        if (err.code !== "EPIPE") {
+          log.warn({ err, pid: child.pid }, "claude.stdin.error");
+        }
+      });
+      stdin.end(this.opts.prompt, "utf8");
+    } catch (err) {
+      log.error({ err, pid: child.pid }, "claude.stdin.write_failed");
+      this.streamError = ExecutorError.from(err);
+    }
 
     child.on("error", (err: NodeJS.ErrnoException) => {
       const mapped = mapSpawnError(err);
@@ -159,7 +188,9 @@ export class ClaudeProcess extends EventEmitter {
       this.timeoutMgr.clear();
       log.debug({ code, signal, pid: child.pid }, "claude exited");
       if (this.finalStatus === null) {
-        if (this.timeoutMgr.didTimeout) {
+        if (this.timeoutMgr.didIdleTimeout) {
+          this.finalStatus = "timeout";
+        } else if (this.timeoutMgr.didTimeout) {
           this.finalStatus = "timeout";
         } else if (this.killReason !== null) {
           this.finalStatus = "killed";
@@ -213,10 +244,14 @@ export class ClaudeProcess extends EventEmitter {
     }
     const event = this.parser.feed(line);
     if (event !== null) this.dispatchEvent(event);
+    this.timeoutMgr.notifyActivity(this.child?.pid ?? null);
+    this.opts.onActivity?.();
   }
 
   private handleStderrLine(line: string): void {
     if (line.length === 0) return;
+    this.timeoutMgr.notifyActivity(this.child?.pid ?? null);
+    this.opts.onActivity?.();
     if (this.stderrBuffer.length < 64 * 1024) {
       this.stderrBuffer += `${line}\n`;
     }
@@ -341,6 +376,15 @@ export class ClaudeProcess extends EventEmitter {
       }
       this.endStream();
       this.timeoutMgr.clear();
+
+      if (this.timeoutMgr.didIdleTimeout) {
+        const idleMs = this.opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+        log.warn(
+          { pid: this.child?.pid ?? null, idleMs, bytesReceived: this.stdoutRawBuffer.length },
+          "claude.process.idle_stall",
+        );
+        throw new ExecutorError(ExecutorErrorCode.IDLE_STALL, `no output for ${idleMs}ms`);
+      }
 
       const durationMs = Date.now() - this.startTimeMs;
       const sessionId = this.resolvedSessionId ?? "";
