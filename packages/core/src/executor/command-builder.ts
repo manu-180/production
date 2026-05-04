@@ -1,7 +1,3 @@
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-
 export interface ClaudeCommandOptions {
   prompt: string;
   workingDir: string;
@@ -74,36 +70,14 @@ export function buildClaudeArgs(opts: ClaudeCommandOptions): string[] {
   return args;
 }
 
-// Cached path to the real claude.exe on Windows
-let _windowsClaudeExe: string | undefined;
-
-// On Windows, npm ships a .cmd shim that fails with EINVAL when spawned
-// with shell:false. Resolve the underlying .exe the .cmd delegates to.
-function resolveWindowsClaudeExe(): string {
-  if (_windowsClaudeExe !== undefined) return _windowsClaudeExe;
-  const cmdPath = execFileSync("where", ["claude.cmd"], { encoding: "utf8" })
-    .split(/\r?\n/)[0]
-    .trim();
-  const exePath = join(
-    dirname(cmdPath),
-    "node_modules",
-    "@anthropic-ai",
-    "claude-code",
-    "bin",
-    "claude.exe",
-  );
-  if (!existsSync(exePath)) {
-    throw new Error(
-      `claude.exe not found at ${exePath} — reinstall @anthropic-ai/claude-code globally`,
-    );
-  }
-  _windowsClaudeExe = exePath;
-  return exePath;
-}
-
+// On Windows, npm ships a .cmd shim that cannot be spawned with shell:false
+// (throws EINVAL). Using shell:true lets cmd.exe invoke the shim, which in
+// turn runs `node claude.js` — the proper Node.js entry point that handles
+// piped stdio correctly. The alternative of spawning claude.exe directly
+// does NOT work: claude.exe is an Electron binary that ignores piped stdio.
 export function resolveClaudeBinary(): { command: string; useShell: boolean } {
   if (process.platform === "win32") {
-    return { command: resolveWindowsClaudeExe(), useShell: false };
+    return { command: "claude.cmd", useShell: true };
   }
   return { command: "claude", useShell: false };
 }
