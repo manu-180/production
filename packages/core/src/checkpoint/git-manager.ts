@@ -445,6 +445,26 @@ export class GitManager {
     }
   }
 
+  /** Drops a stash entry by ref (e.g. "stash@{0}"). */
+  async stashDrop(stashRef: string): Promise<void> {
+    this.guard();
+    try {
+      await this.git.raw(["stash", "drop", stashRef]);
+    } catch (err) {
+      throw wrap("stashDrop", err);
+    }
+  }
+
+  /** Discards all working-tree changes (`git checkout -- .`). */
+  async restoreWorkingTree(): Promise<void> {
+    this.guard();
+    try {
+      await this.git.raw(["checkout", "--", "."]);
+    } catch (err) {
+      throw wrap("restoreWorkingTree", err);
+    }
+  }
+
   /**
    * Returns the stash message for a given stash ref (e.g. "stash@{0}"), or
    * null if no entry exists at that ref.

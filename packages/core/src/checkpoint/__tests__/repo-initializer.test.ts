@@ -59,6 +59,8 @@ function makeMockGitManager(
     getStatus: vi.fn().mockResolvedValue(CLEAN_STATUS),
     stash: vi.fn().mockResolvedValue(undefined),
     stashPop: vi.fn().mockResolvedValue(undefined),
+    stashDrop: vi.fn().mockResolvedValue(undefined),
+    restoreWorkingTree: vi.fn().mockResolvedValue(undefined),
     checkout: vi.fn().mockResolvedValue(undefined),
     getStashMessage: vi.fn().mockResolvedValue("conductor-pre-run-run123"),
     ...overrides,
@@ -85,6 +87,7 @@ describe("RepoInitializer.initForRun", () => {
       stashRef: null,
       originalBranch: "main",
       baseSha: "deadbeef",
+      untrackedBackup: null,
     });
     expect(mock.init).not.toHaveBeenCalled();
     expect(mock.stash).not.toHaveBeenCalled();
@@ -168,6 +171,7 @@ describe("RepoInitializer.restoreAfterRun", () => {
     stashRef: null as string | null,
     originalBranch: "main",
     baseSha: "deadbeef",
+    untrackedBackup: null,
   };
 
   it("calls getStashMessage, stashPop, and checkout when wasStashed is true", async () => {
@@ -236,9 +240,34 @@ describe("RepoInitializer.restoreAfterRun", () => {
     }
   });
 
-  it("throws STASH_POP_FAILED when stashPop rejects", async () => {
+  it("drops stash and continues to checkout when stashPop fails on tracked-file conflict (no untracked backup)", async () => {
+    const stashDropMock = vi.fn().mockResolvedValue(undefined);
+    const restoreWorkingTreeMock = vi.fn().mockResolvedValue(undefined);
     const mock = makeMockGitManager({
       stashPop: vi.fn().mockRejectedValue(new Error("merge conflict on pop")),
+      stashDrop: stashDropMock,
+      restoreWorkingTree: restoreWorkingTreeMock,
+    });
+    const initializer = new RepoInitializer(mock);
+
+    // No untrackedBackup — tracked-file conflict path
+    await initializer.restoreAfterRun({
+      ...BASE_RESULT,
+      wasStashed: true,
+      stashRef: "stash@{0}",
+    });
+
+    expect(restoreWorkingTreeMock).toHaveBeenCalledOnce();
+    expect(stashDropMock).toHaveBeenCalledWith("stash@{0}");
+    // checkout to original branch still happens
+    expect(mock.checkout).toHaveBeenCalledWith("main");
+  });
+
+  it("throws STASH_POP_FAILED when stashPop fails and cleanup also fails", async () => {
+    const mock = makeMockGitManager({
+      stashPop: vi.fn().mockRejectedValue(new Error("merge conflict on pop")),
+      restoreWorkingTree: vi.fn().mockResolvedValue(undefined),
+      stashDrop: vi.fn().mockRejectedValue(new Error("stash drop failed")),
     });
     const initializer = new RepoInitializer(mock);
 
@@ -256,7 +285,40 @@ describe("RepoInitializer.restoreAfterRun", () => {
       expect(err).toBeInstanceOf(RepoInitializerError);
       expect((err as RepoInitializerError).code).toBe("STASH_POP_FAILED");
       expect((err as RepoInitializerError).message).toContain("merge conflict on pop");
+      expect((err as RepoInitializerError).message).toContain("stash drop failed");
     }
+  });
+
+  it("does NOT throw when stashPop fails but untrackedBackup is present (data recovery path)", async () => {
+    const mock = makeMockGitManager({
+      stashPop: vi.fn().mockRejectedValue(new Error("untracked files would be overwritten")),
+    });
+    const initializer = new RepoInitializer(mock);
+
+    // Provide a fake backup. The backup directory will not actually exist on
+    // disk, so cp will fail — but the test asserts that we DO NOT auto-throw
+    // STASH_POP_FAILED and we DO NOT auto-drop the stash. (Drop must never be
+    // called automatically — that path destroyed user data before.)
+    const fakeBackup = {
+      backupDir: "/tmp/fake-backup",
+      backedUpPaths: [] as string[], // empty → restore loop is a no-op, no FS touch
+    };
+
+    await initializer.restoreAfterRun(
+      {
+        ...BASE_RESULT,
+        wasStashed: true,
+        stashRef: "stash@{0}",
+        untrackedBackup: fakeBackup,
+      },
+      "/fake/working/dir",
+    );
+
+    // stash drop must never be called in the untracked-backup path — the
+    // original bug auto-dropped and permanently destroyed user files.
+    expect(mock.stashDrop).not.toHaveBeenCalled();
+    // checkout to original branch still happens.
+    expect(mock.checkout).toHaveBeenCalledWith("main");
   });
 
   it("throws CHECKOUT_FAILED when checkout rejects", async () => {
