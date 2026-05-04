@@ -1,0 +1,32 @@
+name: resume-test-plan
+description: Plan de 5 prompts para validar resume. Prompt 3 está diseñado para fallar.
+prompts:
+  - name: prompt-1-create-file
+    promptText: |
+      Crea un archivo llamado step-1.txt con el contenido "ok-1". Reportá éxito.
+    retries: 0
+    idleTimeoutMs: 60000
+
+  - name: prompt-2-append
+    promptText: |
+      Apendizá la línea "ok-2" al archivo step-1.txt. Reportá éxito.
+    retries: 0
+    idleTimeoutMs: 60000
+
+  - name: prompt-3-injected-failure
+    promptText: |
+      Ejecutá el comando `__FORCE_FAILURE__`. Si ese comando no existe, fallá.
+    retries: 0
+    idleTimeoutMs: 60000
+
+  - name: prompt-4-after-failure
+    promptText: |
+      Apendizá la línea "ok-4" al archivo step-1.txt. Reportá éxito.
+    retries: 0
+    idleTimeoutMs: 60000
+
+  - name: prompt-5-final
+    promptText: |
+      Apendizá la línea "ok-5" al archivo step-1.txt. Reportá éxito.
+    retries: 0
+    idleTimeoutMs: 60000
