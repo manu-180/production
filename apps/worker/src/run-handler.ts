@@ -183,7 +183,7 @@ export class RunHandler {
         this.logger.error({ runId: this._runId, err }, "failed to initialize checkpoint run");
         // Try to undo the stash/branch state we may have created.
         try {
-          await repoInitializer.restoreAfterRun(repoInitResult);
+          await repoInitializer.restoreAfterRun(repoInitResult, runRow.working_dir);
         } catch (restoreErr) {
           this.logger.error(
             { runId: this._runId, err: restoreErr },
@@ -241,7 +241,7 @@ export class RunHandler {
             );
           }
           try {
-            await repoInitializer.restoreAfterRun(repoInitResult);
+            await repoInitializer.restoreAfterRun(repoInitResult, runRow.working_dir);
           } catch (err) {
             this.logger.error({ runId: this._runId, err }, "failed to restore repo after run");
           }

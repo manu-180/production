@@ -53,13 +53,17 @@ interface SupabaseLikeClient {
 /**
  * Decide whether a filename should participate in the plan. We skip:
  *   - Anything not ending in `.md` (case-insensitive).
- *   - README files (any case) — usually documentation, not prompts.
+ *   - README files including ones with a numeric prefix
+ *     (`README.md`, `00-README.md`, `01_readme.md`, etc.) — these are
+ *     usually documentation/index files, not actionable prompts.
  *   - Files starting with `_` — convention for drafts / disabled prompts.
  */
+const READMEISH_FILENAME = /^(?:\d+[-_])?readme(?:\..*)?$/i;
+
 function shouldIncludeFile(filename: string): boolean {
   const lower = filename.toLowerCase();
   if (!lower.endsWith(".md")) return false;
-  if (lower.startsWith("readme")) return false;
+  if (READMEISH_FILENAME.test(filename)) return false;
   if (filename.startsWith("_")) return false;
   return true;
 }

@@ -10,12 +10,51 @@
  * continue.
  */
 
-import {
-  type RecoveryDbClient,
-  recoverOrphanedRuns,
-} from "@conductor/core";
+import { type RecoveryDbClient, recoverOrphanedRuns } from "@conductor/core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Logger } from "pino";
+import { cleanupOrphanClaudeProcesses } from "./lib/orphan-cleanup.js";
+
+export const STALE_HEARTBEAT_THRESHOLD_MS = 2 * 60 * 1000;
+
+export async function reapStalePromptExecutions(
+  supabase: SupabaseClient,
+  logger: Logger,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_HEARTBEAT_THRESHOLD_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from("prompt_executions")
+    .update({
+      status: "failed",
+      error_code: "STALE_HEARTBEAT",
+      error_message: `No heartbeat for >${STALE_HEARTBEAT_THRESHOLD_MS / 1000}s`,
+      finished_at: new Date().toISOString(),
+    })
+    .eq("status", "running")
+    .lt("last_progress_at", cutoff)
+    .select("id, run_id");
+
+  if (error) {
+    logger.error({ err: error }, "startup-recovery.reap_stale.failed");
+    return 0;
+  }
+
+  if (data && data.length > 0) {
+    logger.warn({ count: data.length, items: data }, "startup-recovery.reaped_stale_prompts");
+
+    const runIds = Array.from(new Set(data.map((r: { run_id: string }) => r.run_id)));
+    for (const runId of runIds) {
+      await supabase
+        .from("runs")
+        .update({ status: "failed", finished_at: new Date().toISOString() })
+        .eq("id", runId)
+        .eq("status", "running");
+    }
+  }
+
+  return data?.length ?? 0;
+}
 
 export interface StartupRecoveryOptions {
   staleMs?: number;
@@ -35,6 +74,9 @@ export async function runStartupRecovery(
   logger: Logger,
   opts: StartupRecoveryOptions = {},
 ): Promise<StartupRecoveryResult> {
+  // Kill any orphan claude processes left from a previous worker crash.
+  await cleanupOrphanClaudeProcesses();
+
   const db = supabase as unknown as RecoveryDbClient;
   const recoveryLogger = {
     info: (obj: unknown, msg?: string) => {
@@ -52,6 +94,7 @@ export async function runStartupRecovery(
   };
 
   try {
+    await reapStalePromptExecutions(supabase, logger);
     const result = await recoverOrphanedRuns(db, {
       staleMs: opts.staleMs ?? 60_000,
       logger: recoveryLogger,

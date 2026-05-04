@@ -46,6 +46,22 @@ describe("loadPlanFromDir", () => {
     expect(plan.prompts[0]?.filename).toBe("01-real.md");
   });
 
+  it("skips numeric-prefixed README files (00-README.md, 01_readme.md)", async () => {
+    // Real bug: a 40-prompt plan started with `00-README.md` as a pure
+    // index/table-of-contents. Conductor sent it to Claude, which spent 10+ min
+    // trying to "execute" it. Plan loader must drop these descriptive files.
+    await writeFile(join(dir, "00-README.md"), "# Master index");
+    await writeFile(join(dir, "01_README.md"), "# alt prefix");
+    await writeFile(join(dir, "02-readme.md"), "# lowercase variant");
+    await writeFile(join(dir, "03-real-prompt.md"), "Implement X");
+    // Sanity: don't false-positive on filenames that merely *contain* readme.
+    await writeFile(join(dir, "04-auth-readme-helper.md"), "Real prompt");
+
+    const plan = await loadPlanFromDir(dir);
+    const filenames = plan.prompts.map((p) => p.filename);
+    expect(filenames).toEqual(["03-real-prompt.md", "04-auth-readme-helper.md"]);
+  });
+
   it("skips _draft.md files", async () => {
     await writeFile(join(dir, "01-keep.md"), "Keep");
     await writeFile(join(dir, "_draft.md"), "Draft");

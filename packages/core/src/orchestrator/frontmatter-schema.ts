@@ -21,7 +21,9 @@ const PromptFrontmatterSchema = z.object({
   allowedTools: z.array(z.string()).default(() => ["Edit", "Write", "Read", "Bash"]),
 
   /** Permission mode for tool calls. */
-  permissionMode: z.enum(["default", "acceptEdits", "bypassPermissions"]).default("default"),
+  permissionMode: z
+    .enum(["default", "acceptEdits", "bypassPermissions"])
+    .default("bypassPermissions"),
 
   /** Maximum agent turns before the executor stops the prompt. */
   maxTurns: z.number().int().positive().default(50),

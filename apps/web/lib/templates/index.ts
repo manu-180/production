@@ -36,7 +36,7 @@ Verify the acceptance criteria: dev server starts without errors and the home pa
         frontmatter: {
           title: "Estructurar el proyecto",
           allowedTools: ["Bash", "Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 30,
           requiresApproval: false,
           rollbackOnFail: true,
@@ -56,7 +56,7 @@ Verify the acceptance criteria: a new user can register, log in, and see their e
         frontmatter: {
           title: "Implementar autenticación con Supabase",
           allowedTools: ["Bash", "Read", "Write", "Edit", "Glob"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 40,
           requiresApproval: false,
           rollbackOnFail: true,
@@ -76,7 +76,7 @@ Verify the acceptance criteria: migration applies cleanly, RLS blocks cross-user
         frontmatter: {
           title: "Definir modelo de datos y RLS",
           allowedTools: ["Bash", "Read", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 25,
           requiresApproval: true,
           rollbackOnFail: true,
@@ -96,7 +96,7 @@ Verify the acceptance criteria: a logged-in user can create 3 items, edit one, d
         frontmatter: {
           title: "Construir la interfaz CRUD",
           allowedTools: ["Read", "Write", "Edit", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 60,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -128,7 +128,7 @@ Verify the acceptance criteria: \`TECH_DEBT.md\` exists and lists at least the t
         frontmatter: {
           title: "Auditar deuda técnica",
           allowedTools: ["Bash", "Read", "Glob", "Grep", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 30,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -147,7 +147,7 @@ Verify the acceptance criteria: \`tsc --noEmit\` exits 0 and \`grep -r "any" src
         frontmatter: {
           title: "Mejorar seguridad de tipos",
           allowedTools: ["Bash", "Read", "Edit", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 50,
           requiresApproval: false,
           rollbackOnFail: true,
@@ -167,7 +167,7 @@ Verify the acceptance criteria: \`vitest run\` exits 0 and coverage for the targ
         frontmatter: {
           title: "Agregar cobertura de tests",
           allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 60,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -199,7 +199,7 @@ Verify the acceptance criteria: all tokens render correctly in the reference pag
         frontmatter: {
           title: "Definir design tokens",
           allowedTools: ["Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 25,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -218,7 +218,7 @@ Verify the acceptance criteria: TypeScript compiles with zero errors and all com
         frontmatter: {
           title: "Construir componentes base",
           allowedTools: ["Read", "Write", "Edit", "Glob"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 80,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -238,7 +238,7 @@ Verify the acceptance criteria: \`storybook build\` exits 0 and opening the buil
         frontmatter: {
           title: "Escribir stories de Storybook",
           allowedTools: ["Read", "Write", "Edit", "Bash"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 60,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -270,7 +270,7 @@ Verify the acceptance criteria: \`vitest run --reporter=verbose\` exits 0 and no
         frontmatter: {
           title: "Generar tests unitarios",
           allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 60,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -289,7 +289,7 @@ Verify the acceptance criteria: \`vitest run\` passes all integration test files
         frontmatter: {
           title: "Generar tests de integración",
           allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 60,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -309,7 +309,7 @@ Verify the acceptance criteria: \`playwright test\` passes in headless mode acro
         frontmatter: {
           title: "Escribir flujos E2E críticos",
           allowedTools: ["Bash", "Read", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 50,
           requiresApproval: true,
           rollbackOnFail: false,
@@ -341,7 +341,7 @@ Verify the acceptance criteria: \`openapi.json\` is valid OpenAPI 3.1 (lint with
         frontmatter: {
           title: "Generar esquema OpenAPI",
           allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 40,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -360,7 +360,7 @@ Verify the acceptance criteria: the docs page renders all endpoints, the authori
         frontmatter: {
           title: "Publicar documentación interactiva",
           allowedTools: ["Bash", "Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 30,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -392,7 +392,7 @@ Verify the acceptance criteria: \`MIGRATION_PLAN.md\` exists, lists every DDL st
         frontmatter: {
           title: "Planificar la migración",
           allowedTools: ["Bash", "Read", "Write", "Glob"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 20,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -411,7 +411,7 @@ Verify the acceptance criteria: \`supabase db push --dry-run\` reports no errors
         frontmatter: {
           title: "Escribir archivos de migración",
           allowedTools: ["Bash", "Read", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 30,
           requiresApproval: true,
           rollbackOnFail: true,
@@ -464,7 +464,7 @@ Verify the acceptance criteria: \`messages/en.json\`, \`messages/es.json\`, and 
         frontmatter: {
           title: "Extraer strings y crear archivos de mensajes",
           allowedTools: ["Bash", "Read", "Write", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 45,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -484,7 +484,7 @@ Verify the acceptance criteria: \`next build\` succeeds, the middleware correctl
         frontmatter: {
           title: "Configurar framework next-intl",
           allowedTools: ["Bash", "Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 35,
           requiresApproval: false,
           rollbackOnFail: true,
@@ -505,7 +505,7 @@ Verify the acceptance criteria: the app renders in English, Spanish, and Portugu
         frontmatter: {
           title: "Reemplazar strings hardcodeados con traducciones",
           allowedTools: ["Read", "Edit", "Glob", "Grep"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 70,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -526,7 +526,7 @@ Verify the acceptance criteria: the switcher appears in the UI, clicking a langu
         frontmatter: {
           title: "Construir selector de idioma",
           allowedTools: ["Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 40,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -559,7 +559,7 @@ Verify the acceptance criteria: \`BUNDLE_ANALYSIS.md\` exists, identifies the to
         frontmatter: {
           title: "Analizar tamaño del bundle y chunks",
           allowedTools: ["Bash", "Read", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 25,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -580,7 +580,7 @@ Verify the acceptance criteria: the bundle size decreases by at least 15%, \`nex
         frontmatter: {
           title: "Optimizar tamaño del bundle",
           allowedTools: ["Bash", "Read", "Edit", "Write"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 50,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -600,7 +600,7 @@ Verify the acceptance criteria: run \`lighthouse\` against the local dev server 
         frontmatter: {
           title: "Optimizar imágenes y fuentes",
           allowedTools: ["Read", "Edit", "Bash"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 45,
           requiresApproval: false,
           rollbackOnFail: false,
@@ -621,7 +621,7 @@ Verify the acceptance criteria: average API response time decreases by at least 
         frontmatter: {
           title: "Optimizar queries de base de datos",
           allowedTools: ["Bash", "Read", "Write", "Edit"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 40,
           requiresApproval: false,
           rollbackOnFail: true,
@@ -642,7 +642,7 @@ Verify the acceptance criteria: metrics are being recorded and sent to analytics
         frontmatter: {
           title: "Configurar monitoreo de rendimiento",
           allowedTools: ["Read", "Write", "Edit", "Bash"],
-          permissionMode: "default",
+          permissionMode: "bypassPermissions",
           maxTurns: 40,
           requiresApproval: false,
           rollbackOnFail: false,

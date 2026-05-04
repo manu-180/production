@@ -415,7 +415,10 @@ export type Database = {
           finished_at: string | null;
           id: string;
           last_heartbeat_at: string | null;
+          last_succeeded_prompt_index: number | null;
           plan_id: string;
+          resume_from_index: number | null;
+          resume_session_id: string | null;
           started_at: string | null;
           status: string;
           total_cache_tokens: number;
@@ -435,7 +438,10 @@ export type Database = {
           finished_at?: string | null;
           id?: string;
           last_heartbeat_at?: string | null;
+          last_succeeded_prompt_index?: number | null;
           plan_id: string;
+          resume_from_index?: number | null;
+          resume_session_id?: string | null;
           started_at?: string | null;
           status?: string;
           total_cache_tokens?: number;
@@ -455,7 +461,10 @@ export type Database = {
           finished_at?: string | null;
           id?: string;
           last_heartbeat_at?: string | null;
+          last_succeeded_prompt_index?: number | null;
           plan_id?: string;
+          resume_from_index?: number | null;
+          resume_session_id?: string | null;
           started_at?: string | null;
           status?: string;
           total_cache_tokens?: number;
@@ -653,6 +662,8 @@ export type Database = {
           p_triggered_by?: string;
           p_user_id: string;
           p_working_dir: string;
+          p_resume_from_index?: number | null;
+          p_resume_session_id?: string | null;
         };
         Returns: string;
       };

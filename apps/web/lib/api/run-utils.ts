@@ -54,10 +54,11 @@ export async function assertRunOwned(
   status: string;
   plan_id: string;
   working_dir: string;
+  last_succeeded_prompt_index: number | null;
 } | null> {
   const { data } = await db
     .from("runs")
-    .select("id, status, plan_id, working_dir")
+    .select("id, status, plan_id, working_dir, last_succeeded_prompt_index")
     .eq("id", runId)
     .eq("user_id", userId)
     .maybeSingle();

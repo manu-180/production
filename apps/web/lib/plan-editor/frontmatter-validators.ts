@@ -38,7 +38,7 @@ export type PromptFrontmatter = z.infer<typeof promptFrontmatterSchema>;
 export const defaultFrontmatter: PromptFrontmatter = {
   continueSession: false,
   allowedTools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
-  permissionMode: "default",
+  permissionMode: "bypassPermissions",
   maxTurns: 50,
   requiresApproval: false,
   rollbackOnFail: false,

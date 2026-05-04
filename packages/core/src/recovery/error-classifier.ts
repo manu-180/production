@@ -18,10 +18,12 @@
  *  - UNKNOWN               -> unknown, retryable (best effort)
  */
 
-import { ExecutorError, ExecutorErrorCode } from "../executor/errors.js";
+import { type ExecutorError, ExecutorErrorCode } from "../executor/errors.js";
+import { logger } from "../logger.js";
 
 export type ErrorCategory =
   | "transient"
+  | "idle"
   | "rate_limit"
   | "auth"
   | "config"
@@ -88,12 +90,12 @@ export function extractRetryAfterMs(err: ExecutorError): number | null {
 
   for (const text of candidates) {
     const headerMatch = text.match(/Retry-After:\s*(\d+)/i);
-    if (headerMatch && headerMatch[1]) {
+    if (headerMatch?.[1]) {
       const n = Number.parseInt(headerMatch[1], 10);
       if (Number.isFinite(n) && n >= 0) return n * 1000;
     }
     const waitMatch = text.match(/wait\s+(\d+)\s*(?:s|sec|seconds?)/i);
-    if (waitMatch && waitMatch[1]) {
+    if (waitMatch?.[1]) {
       const n = Number.parseInt(waitMatch[1], 10);
       if (Number.isFinite(n) && n >= 0) return n * 1000;
     }
@@ -117,6 +119,8 @@ export function classifyError(err: ExecutorError): ClassifiedError {
       return { category: "auth", retryable: false, requiresHumanAction: true };
     case ExecutorErrorCode.TIMEOUT:
       return { category: "transient", retryable: true };
+    case ExecutorErrorCode.IDLE_STALL:
+      return { category: "idle", retryable: true, waitMs: 5_000 };
     case ExecutorErrorCode.PARSE_ERROR:
       return { category: "transient", retryable: true };
     case ExecutorErrorCode.PROCESS_KILLED:
@@ -134,6 +138,7 @@ export function classifyError(err: ExecutorError): ClassifiedError {
     case ExecutorErrorCode.UNKNOWN:
       return { category: "unknown", retryable: true };
     default:
-      return { category: "unknown", retryable: false };
+      logger.warn({ code: err.code, message: err.message }, "error-classifier.unknown_code");
+      return { category: "unknown", retryable: true };
   }
 }

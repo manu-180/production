@@ -3,7 +3,11 @@ import { promisify } from "node:util";
 import { logger } from "../logger.js";
 import { killProcessTreeWindowsVerified } from "../utils/process-kill.js";
 
-export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+// Total wall-clock cap per prompt. Bumped from 10m → 30m after observing
+// large setup prompts hit the old cap twice in a row before succeeding on
+// retry 3 (~6.7 min) — users perceived this as "stuck". The idle timer
+// (90s without any stdout/tool activity) still catches truly hung runs.
+export const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 export const DEFAULT_GRACE_MS = 30 * 1000;
 export const DEFAULT_IDLE_TIMEOUT_MS = 90 * 1000;
 

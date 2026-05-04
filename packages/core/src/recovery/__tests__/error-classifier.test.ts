@@ -1,12 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ExecutorError, ExecutorErrorCode } from "../../executor/errors.js";
 import { classifyError, extractRetryAfterMs } from "../error-classifier.js";
 
-function makeErr(
-  code: ExecutorErrorCode,
-  message = "x",
-  originalError?: unknown,
-): ExecutorError {
+const { warnSpy } = vi.hoisted(() => ({ warnSpy: vi.fn() }));
+vi.mock("../../logger.js", () => ({ logger: { warn: warnSpy } }));
+
+function makeErr(code: ExecutorErrorCode, message = "x", originalError?: unknown): ExecutorError {
   return new ExecutorError(code, message, originalError !== undefined ? { originalError } : {});
 }
 
@@ -105,6 +104,43 @@ describe("classifyError", () => {
     const r = classifyError(makeErr(ExecutorErrorCode.UNKNOWN));
     expect(r.category).toBe("unknown");
     expect(r.retryable).toBe(true);
+  });
+
+  it("IDLE_STALL -> idle, retryable, waitMs=5000", () => {
+    const r = classifyError(makeErr(ExecutorErrorCode.IDLE_STALL));
+    expect(r.category).toBe("idle");
+    expect(r.retryable).toBe(true);
+    expect(r.waitMs).toBe(5_000);
+  });
+
+  it("default branch returns unknown, retryable=true (not false)", () => {
+    const r = classifyError(makeErr("FOO_NOT_REAL" as ExecutorErrorCode));
+    expect(r.category).toBe("unknown");
+    expect(r.retryable).toBe(true);
+  });
+
+  describe("default branch — logger warn", () => {
+    beforeEach(() => {
+      warnSpy.mockClear();
+    });
+
+    it("logs unknown_code with warn on default branch", () => {
+      classifyError(makeErr("FOO_NOT_REAL" as ExecutorErrorCode, "some message"));
+      expect(warnSpy).toHaveBeenCalledWith(
+        { code: "FOO_NOT_REAL", message: "some message" },
+        "error-classifier.unknown_code",
+      );
+    });
+  });
+});
+
+describe("classifyError — snapshot all ExecutorErrorCode values", () => {
+  it("covers every ExecutorErrorCode without throwing", () => {
+    const results = Object.values(ExecutorErrorCode).map((code) => ({
+      code,
+      result: classifyError(makeErr(code)),
+    }));
+    expect(results).toMatchSnapshot();
   });
 });
 

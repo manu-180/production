@@ -1,0 +1,95 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`classifyError — snapshot all ExecutorErrorCode values > covers every ExecutorErrorCode without throwing 1`] = `
+[
+  {
+    "code": "CLI_NOT_FOUND",
+    "result": {
+      "category": "system",
+      "requiresHumanAction": true,
+      "retryable": false,
+    },
+  },
+  {
+    "code": "AUTH_INVALID",
+    "result": {
+      "category": "auth",
+      "requiresHumanAction": true,
+      "retryable": false,
+    },
+  },
+  {
+    "code": "RATE_LIMITED",
+    "result": {
+      "category": "rate_limit",
+      "retryable": true,
+      "waitMs": 60000,
+    },
+  },
+  {
+    "code": "TIMEOUT",
+    "result": {
+      "category": "transient",
+      "retryable": true,
+    },
+  },
+  {
+    "code": "IDLE_STALL",
+    "result": {
+      "category": "idle",
+      "retryable": true,
+      "waitMs": 5000,
+    },
+  },
+  {
+    "code": "PROCESS_KILLED",
+    "result": {
+      "category": "transient",
+      "retryable": true,
+    },
+  },
+  {
+    "code": "PARSE_ERROR",
+    "result": {
+      "category": "transient",
+      "retryable": true,
+    },
+  },
+  {
+    "code": "TOOL_DENIED",
+    "result": {
+      "category": "config",
+      "retryable": false,
+    },
+  },
+  {
+    "code": "MAX_TURNS_REACHED",
+    "result": {
+      "category": "config",
+      "retryable": false,
+    },
+  },
+  {
+    "code": "BUDGET_EXCEEDED",
+    "result": {
+      "category": "config",
+      "retryable": false,
+    },
+  },
+  {
+    "code": "WORKING_DIR_INVALID",
+    "result": {
+      "category": "system",
+      "requiresHumanAction": true,
+      "retryable": false,
+    },
+  },
+  {
+    "code": "UNKNOWN",
+    "result": {
+      "category": "unknown",
+      "retryable": true,
+    },
+  },
+]
+`;
