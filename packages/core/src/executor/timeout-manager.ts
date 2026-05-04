@@ -7,6 +7,8 @@ export const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_GRACE_MS = 30 * 1000;
 export const DEFAULT_IDLE_TIMEOUT_MS = 90 * 1000;
 
+const SOFT_KILL_TIMEOUT_MS = 5_000;
+
 export interface TimeoutManagerOptions {
   timeoutMs?: number;
   graceMs?: number;
@@ -110,7 +112,7 @@ export async function softKillAsync(pid: number | null): Promise<void> {
     try {
       await execFileAsync("taskkill", ["/T", "/PID", String(pid)], {
         windowsHide: true,
-        timeout: 5_000,
+        timeout: SOFT_KILL_TIMEOUT_MS,
       });
       logger.info({ pid }, "timeout-manager.soft_kill.sent");
     } catch (err) {

@@ -20,7 +20,7 @@ export async function isPidAliveWindows(pid: number): Promise<boolean | null> {
       { windowsHide: true, timeout: TASKLIST_TIMEOUT_MS },
     );
     // Si encuentra: línea CSV con el proceso; si no: línea "INFO: No tasks..."
-    return /^"[^"]+","\d+"/m.test(stdout);
+    return new RegExp(`^"[^"]+","${pid}"`, "m").test(stdout);
   } catch (err) {
     logger.warn({ err, pid }, "process-kill.is_pid_alive_failed");
     return null;

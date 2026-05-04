@@ -23,7 +23,10 @@ const mockedExecFile = vi.mocked(execFile);
 
 function mockExecFileSuccess() {
   mockedExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
-    (callback as (err: null, stdout: string, stderr: string) => void)(null, "", "");
+    (callback as (err: null, value: { stdout: string; stderr: string }) => void)(null, {
+      stdout: "",
+      stderr: "",
+    });
     return {} as ReturnType<typeof execFile>;
   });
 }
