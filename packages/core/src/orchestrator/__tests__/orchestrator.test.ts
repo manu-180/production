@@ -870,6 +870,11 @@ describe("Orchestrator — parallel waves", () => {
       runId: "run-parallel-timing",
       db: createMockDb(),
       pauseController: new PauseController(),
+      // Disable hardening for deterministic timing assertions: stagger jitter
+      // would inflate elapsed by up to PARALLEL_STAGGER_MAX_MS per sibling and
+      // a cap of 2 would serialize the third prompt behind the others.
+      parallelStaggerMaxMs: 0,
+      parallelConcurrencyCap: 3,
     });
 
     const t0 = Date.now();
@@ -909,7 +914,7 @@ describe("Orchestrator — parallel waves", () => {
     expect(commitSpy.mock.calls[0]?.[0]).toBe("p1");
   });
 
-  it("respects concurrency cap of 3 with a wave of 5 prompts", async () => {
+  it("respects configured concurrency cap with a wave of more prompts than the cap", async () => {
     const plan = makePlan([
       makePromptInWave("p1", 0, 1),
       makePromptInWave("p2", 1, 1),
@@ -938,6 +943,11 @@ describe("Orchestrator — parallel waves", () => {
       runId: "run-cap-3",
       db: createMockDb(),
       pauseController: new PauseController(),
+      // Pin cap to 3 (overriding the production default of 2) to keep the
+      // assertion semantics: 5 prompts > cap, must serialize beyond the cap.
+      parallelConcurrencyCap: 3,
+      // Disable stagger so all 3 starting siblings overlap deterministically.
+      parallelStaggerMaxMs: 0,
     });
 
     const result = await orchestrator.run();
@@ -989,6 +999,10 @@ describe("Orchestrator — parallel waves", () => {
       db: createMockDb(),
       pauseController: new PauseController(),
       checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+      // Disable stagger and serialize cap so spawn order matches prompt order
+      // (waitImpls are consumed in spawn order).
+      parallelStaggerMaxMs: 0,
+      parallelConcurrencyCap: 3,
     });
 
     const result = await orchestrator.run();

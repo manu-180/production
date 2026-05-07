@@ -41,6 +41,34 @@ import { groupIntoWaves, runWithConcurrencyLimit } from "./wave-grouper.js";
  */
 export const DEFAULT_PROMPT_RETRIES = 2;
 
+/**
+ * Maximum sibling Claude CLI processes to spawn concurrently within a single
+ * parallel wave. Capped at 2 (down from 3) because on Windows the CLI is
+ * spawned through a `cmd.exe /c claude.cmd` shell wrapper, and three
+ * concurrent processes were observed contending on the OAuth token refresh
+ * — typically two of three would hang in `Esperando salida...` while the
+ * third proceeded. Two concurrent processes have been stable.
+ */
+export const PARALLEL_CONCURRENCY_CAP = 2;
+
+/**
+ * Idle-timeout floor applied to siblings in a parallel wave. Tighter than
+ * the executor default (90s) so a hung sibling fails its attempt fast and
+ * the retry path can recover, rather than burning the run's wall-clock
+ * budget on a stuck process. Honors any explicit per-prompt
+ * `idleTimeoutMs` if it's already lower.
+ */
+export const PARALLEL_IDLE_TIMEOUT_MS = 45_000;
+
+/**
+ * Maximum stagger applied to a sibling's start in a parallel wave. Each
+ * sibling sleeps a random interval in `[0, PARALLEL_STAGGER_MAX_MS]` before
+ * spawning Claude — prevents two CLI processes from hitting the OAuth
+ * refresh endpoint in the same millisecond on retry, which is what
+ * triggers contention/hangs on Windows.
+ */
+export const PARALLEL_STAGGER_MAX_MS = 1_500;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase-stub interfaces (CheckpointManager: phase 08)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +185,33 @@ export interface OrchestratorOptions {
   guardian?: GuardianRunner;
   /** Optional checkpoint manager (phase 08+). */
   checkpoint?: CheckpointManager;
+  /**
+   * Set of prompt ids that succeeded in a previous run of the same plan.
+   * The orchestrator skips these (marks them `skipped` with reason
+   * `already_done`) instead of calling Claude. Use to avoid duplicate work
+   * and duplicate commits when re-running a plan whose earlier run was
+   * cancelled or partially failed. Empty/undefined = no skipping.
+   */
+  alreadyDonePromptIds?: ReadonlySet<string>;
+  /**
+   * Maximum sibling Claude CLI processes to spawn concurrently within a
+   * single parallel wave. Defaults to {@link PARALLEL_CONCURRENCY_CAP} (2).
+   * Tests may set to 1 to serialize, or higher to exercise specific limits.
+   */
+  parallelConcurrencyCap?: number;
+  /**
+   * Maximum random jitter applied to a sibling's start in a parallel wave
+   * (milliseconds). Each sibling sleeps `[0, max]` ms before spawning Claude.
+   * Defaults to {@link PARALLEL_STAGGER_MAX_MS}. Set to 0 in tests to make
+   * spawn order deterministic.
+   */
+  parallelStaggerMaxMs?: number;
+  /**
+   * Idle-timeout floor (ms) applied to siblings in a parallel wave. Defaults
+   * to {@link PARALLEL_IDLE_TIMEOUT_MS}. Tests can set to 0 to disable the
+   * override and use the executor's default.
+   */
+  parallelIdleTimeoutMs?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -660,6 +715,10 @@ export class Orchestrator {
   private readonly checkpoint?: CheckpointManager;
   private readonly emitter: ProgressEmitter;
   private readonly skipped = new Map<string, string>();
+  private readonly alreadyDonePromptIds: ReadonlySet<string>;
+  private readonly parallelConcurrencyCap: number;
+  private readonly parallelStaggerMaxMs: number;
+  private readonly parallelIdleTimeoutMs: number;
 
   constructor(opts: OrchestratorOptions) {
     this.plan = opts.plan;
@@ -670,6 +729,10 @@ export class Orchestrator {
     if (opts.onEvent) this.onEvent = opts.onEvent;
     if (opts.guardian) this.guardian = opts.guardian;
     if (opts.checkpoint) this.checkpoint = opts.checkpoint;
+    this.alreadyDonePromptIds = opts.alreadyDonePromptIds ?? new Set();
+    this.parallelConcurrencyCap = opts.parallelConcurrencyCap ?? PARALLEL_CONCURRENCY_CAP;
+    this.parallelStaggerMaxMs = opts.parallelStaggerMaxMs ?? PARALLEL_STAGGER_MAX_MS;
+    this.parallelIdleTimeoutMs = opts.parallelIdleTimeoutMs ?? PARALLEL_IDLE_TIMEOUT_MS;
     this.emitter = new ProgressEmitter(this.runId, this.db);
   }
 
@@ -775,6 +838,20 @@ export class Orchestrator {
           context.currentPromptIndex++;
           continue;
         }
+        if (this.alreadyDonePromptIds.has(p.id)) {
+          await markPromptSkipped(this.db, this.runId, p.id, "already_done");
+          await this.emit({
+            type: "prompt.failed",
+            promptId: p.id,
+            error: "Skipped: already completed successfully in a previous run of this plan",
+            willRetry: false,
+          });
+          console.info(
+            `[Orchestrator] skipping prompt ${p.id} (index ${idx}) — already_done in prior run`,
+          );
+          context.currentPromptIndex++;
+          continue;
+        }
         const skipReason = this.skipped.get(p.id);
         if (skipReason !== undefined) {
           // No `prompt.skipped` variant in RunEvent yet; we surface it as a
@@ -851,7 +928,7 @@ export class Orchestrator {
           this._executePromptCore(p, context, startTime, { ignoreContinueSession: isParallel }),
       );
       const settled = isParallel
-        ? await runWithConcurrencyLimit(3, tasks)
+        ? await runWithConcurrencyLimit(this.parallelConcurrencyCap, tasks)
         : await runWithConcurrencyLimit(1, tasks);
 
       // Normalize: rejected promises (shouldn't happen — _executePromptCore
@@ -1054,6 +1131,22 @@ export class Orchestrator {
     let lastError: string | undefined;
     let lastErrorCode = "UNKNOWN";
 
+    // Parallel-wave hardening: stagger the spawn so multiple Claude CLI
+    // siblings don't hit the OAuth-token refresh in the same millisecond.
+    // Observed on Windows that simultaneous spawns frequently hung, leaving
+    // some siblings in "Esperando salida..." indefinitely. A small random
+    // jitter eliminates that race on attempt 1; on retries the existing
+    // backoff already provides separation.
+    if (opts.ignoreContinueSession && attempt === 1 && this.parallelStaggerMaxMs > 0) {
+      const jitter = Math.floor(Math.random() * this.parallelStaggerMaxMs);
+      if (jitter > 0) {
+        await sleep(jitter, this.pauseController.getSignal()).catch(() => {});
+        if (this.pauseController.isCancelled()) {
+          return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
+        }
+      }
+    }
+
     while (attempt <= maxAttempts) {
       let executionId: string;
       try {
@@ -1101,6 +1194,17 @@ export class Orchestrator {
               // Parallel siblings cannot share a session — strip any inherited
               // resume id so each prompt starts fresh.
               claudeOpts.resumeSessionId = undefined;
+              // Tighter idle timeout for parallel siblings so a stuck process
+              // (e.g. OAuth/stdin contention on Windows) fails its attempt
+              // quickly and the retry can recover, rather than burning the
+              // run's wall-clock budget. Honors a lower per-prompt override.
+              const explicit = prompt.frontmatter.idleTimeoutMs;
+              if (
+                this.parallelIdleTimeoutMs > 0 &&
+                (typeof explicit !== "number" || explicit > this.parallelIdleTimeoutMs)
+              ) {
+                claudeOpts.idleTimeoutMs = this.parallelIdleTimeoutMs;
+              }
             }
 
             if (nextPromptText !== null) {
