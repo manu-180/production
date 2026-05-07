@@ -81,8 +81,15 @@ export class CheckpointManager {
   private checkpoints: CheckpointEntry[] = [];
   /** SHA before any run changes (for rollback baseline) */
   private baseSha: string | null = null;
-  /** Branch created for this run */
+  /** Branch created for this run (null when noBranch mode is active) */
   private runBranch: string | null = null;
+  /**
+   * True after a successful initRun — used to gate commit()/rollback() in
+   * branchless mode where runBranch stays null even after init.
+   */
+  private initialized = false;
+  /** True when initRun was called with noBranch:true — skip merge/delete in finishRun. */
+  private noBranchMode = false;
   /** Set to true after finishRun succeeds — blocks further git operations */
   private finished = false;
 
@@ -97,17 +104,40 @@ export class CheckpointManager {
   // -------------------------------------------------------------------------
 
   /**
-   * Called before run starts — creates a run-scoped branch and records
-   * the base SHA for later rollback.
+   * Called before run starts — records the base SHA for later rollback and
+   * (optionally) creates a run-scoped branch.
    *
-   * Returns the branch name and base SHA so callers can reference them.
+   * @param originalBranch - The branch the user is currently on. In noBranch
+   *   mode this becomes the branch we commit on directly (no isolation).
+   * @param opts.noBranch - When true, skip branch creation entirely and let
+   *   the orchestrator commit directly on the current HEAD (typically `main`).
+   *   `finishRun` then becomes a no-op for git. Used in single-developer
+   *   workflows where the user explicitly wants every change on `main`.
+   *
+   * Returns the branch name (the current branch when noBranch:true, the new
+   * run branch otherwise) and the base SHA.
    */
-  async initRun(_originalBranch: string): Promise<RunInitResult> {
-    if (this.runBranch !== null) {
+  async initRun(originalBranch: string, opts?: { noBranch?: boolean }): Promise<RunInitResult> {
+    if (this.initialized) {
       throw new CheckpointManagerError(
         "ALREADY_INITIALIZED",
-        `Run already initialized on branch ${this.runBranch}`,
+        this.runBranch !== null
+          ? `Run already initialized on branch ${this.runBranch}`
+          : "Run already initialized (noBranch mode)",
       );
+    }
+
+    const noBranch = opts?.noBranch === true;
+
+    if (noBranch) {
+      // Direct-to-HEAD mode: no isolation, commits land on the current branch
+      // (typically `main`). Rollback still works because we record baseSha.
+      const baseSha = await this.gitManager.getHeadSha();
+      this.baseSha = baseSha;
+      this.runBranch = null;
+      this.noBranchMode = true;
+      this.initialized = true;
+      return { runBranch: originalBranch, baseSha };
     }
 
     const branchName = `conductor/run-${this.runId.slice(0, 8)}`;
@@ -119,6 +149,7 @@ export class CheckpointManager {
 
     this.baseSha = baseSha;
     this.runBranch = branchName;
+    this.initialized = true;
 
     return { runBranch: branchName, baseSha };
   }
@@ -155,10 +186,10 @@ export class CheckpointManager {
         "Cannot perform git operations after run has finished.",
       );
     }
-    if (this.runBranch === null) {
+    if (!this.initialized) {
       throw new CheckpointManagerError(
         "RUN_NOT_INITIALIZED",
-        "initRun() must be called before commit(). No run branch has been created.",
+        "initRun() must be called before commit().",
       );
     }
 
@@ -197,7 +228,7 @@ export class CheckpointManager {
         "Cannot perform git operations after run has finished.",
       );
     }
-    if (this.runBranch === null) {
+    if (!this.initialized) {
       throw new CheckpointManagerError(
         "RUN_NOT_INITIALIZED",
         "initRun() must be called before rollback().",
@@ -259,6 +290,12 @@ export class CheckpointManager {
     const deleteRunBranch = opts?.deleteRunBranch ?? true;
 
     try {
+      // noBranch mode: nothing to merge or delete — commits already landed on
+      // the original branch directly. Just mark finished and exit.
+      if (this.noBranchMode) {
+        return;
+      }
+
       if (success && this.runBranch !== null) {
         const runBranch = this.runBranch;
 
@@ -327,7 +364,7 @@ export class CheckpointManager {
         "Cannot perform git operations after run has finished.",
       );
     }
-    if (this.runBranch === null) {
+    if (!this.initialized) {
       throw new CheckpointManagerError(
         "RUN_NOT_INITIALIZED",
         "initRun() must be called before getDiffForPrompt().",
