@@ -149,6 +149,7 @@ function makePrompt(id: string, order: number): PromptDefinition {
   return {
     id,
     order,
+    wave: order + 1,
     filename: `${id}.md`,
     content: `Prompt body ${id}`,
     frontmatter: {
@@ -374,6 +375,7 @@ function makePromptWithSession(id: string, order: number): PromptDefinition {
   return {
     id,
     order,
+    wave: order + 1,
     filename: `${id}.md`,
     content: `Prompt body ${id}`,
     frontmatter: {
@@ -593,6 +595,7 @@ function makePromptNoRetries(id: string, order: number): PromptDefinition {
   return {
     id,
     order,
+    wave: order + 1,
     filename: `${id}.md`,
     content: `Prompt body ${id}`,
     frontmatter: {},

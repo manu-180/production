@@ -50,6 +50,15 @@ const PromptFrontmatterSchema = z.object({
 
   /** Filenames or ids this prompt depends on (must complete first). */
   dependsOn: z.array(z.string()).default(() => []),
+
+  /**
+   * Optional wave override. Prompts sharing a wave number run in parallel
+   * (capped concurrency); waves themselves execute sequentially in ascending
+   * order. When omitted, the loader derives the wave from the filename's
+   * numeric prefix (e.g., `03a-foo.md` → 3) or assigns a unique sequential
+   * wave to keep behavior backward-compatible.
+   */
+  wave: z.number().int().nonnegative().optional(),
 });
 
 /** Fully-resolved frontmatter (defaults applied) inferred from the schema. */

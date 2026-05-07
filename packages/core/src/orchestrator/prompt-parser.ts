@@ -59,6 +59,32 @@ function deriveTitleFromFilename(filename: string): string {
   return tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()).join(" ");
 }
 
+/**
+ * Extract the wave number from a filename's numeric prefix.
+ *
+ * The convention is: a leading run of digits identifies the wave; an optional
+ * single lowercase letter that follows the digits marks the file as a
+ * parallel sibling of the same wave; the digits/letter must be terminated by
+ * a hyphen or underscore before the rest of the filename.
+ *
+ * Examples:
+ *   "03a-foo.md"   → 3
+ *   "03b-bar.md"   → 3   (parallel sibling of 03a)
+ *   "10-only.md"   → 10
+ *   "001_x.md"     → 1
+ *   "intro.md"     → undefined (no numeric prefix)
+ *   "v2-hotfix.md" → undefined (prefix is not purely numeric)
+ */
+function deriveWaveFromFilename(filename: string): number | undefined {
+  // Drop directory portion if any was passed by mistake.
+  const base = filename.replace(/^.*[\\/]/, "");
+  const m = base.match(/^(\d+)[a-z]?[-_]/);
+  if (!m || m[1] === undefined) return undefined;
+  // Number.parseInt with radix 10 — leading zeros are tolerated and dropped.
+  const n = Number.parseInt(m[1], 10);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 /** Compute hex SHA-256 of a string. */
 function sha256Hex(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
@@ -119,6 +145,18 @@ function parsePromptFile(filename: string, rawContent: string): ParsedPrompt {
 
   const title = frontmatter.title ?? deriveTitleFromFilename(filename);
 
+  // Derive wave from filename when frontmatter didn't specify one. We mutate
+  // the parsed object in place so that downstream consumers see a single,
+  // consistent value regardless of the source. The plan-loader applies the
+  // final fallback (unique sequential wave by order index) when this is still
+  // undefined — i.e., for files without a numeric prefix.
+  if (frontmatter.wave === undefined) {
+    const derived = deriveWaveFromFilename(filename);
+    if (derived !== undefined) {
+      frontmatter.wave = derived;
+    }
+  }
+
   return {
     filename,
     title,
@@ -130,5 +168,5 @@ function parsePromptFile(filename: string, rawContent: string): ParsedPrompt {
   };
 }
 
-export { parsePromptFile };
+export { deriveWaveFromFilename, parsePromptFile };
 export type { ParsedPrompt };

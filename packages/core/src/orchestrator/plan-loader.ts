@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Plan, PromptDefinition, PromptFrontmatter } from "../types.js";
-import { type ParsedPrompt, parsePromptFile } from "./prompt-parser.js";
+import { type ParsedPrompt, deriveWaveFromFilename, parsePromptFile } from "./prompt-parser.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Supabase client surface (structural typing — no @supabase/* dependency)
@@ -71,13 +71,14 @@ function shouldIncludeFile(filename: string): boolean {
 /**
  * Project a {@link ParsedPrompt} into the orchestrator-facing
  * {@link PromptDefinition}. Strips parser-internal extras (`tags`,
- * `dependsOn`) so what we hand to the executor matches the public contract
- * declared in `types.ts`.
+ * `dependsOn`, `wave`) so what we hand to the executor matches the public
+ * contract declared in `types.ts`. The `wave` value is lifted onto the
+ * PromptDefinition itself.
  */
 function toPromptDefinition(parsed: ParsedPrompt, order: number): PromptDefinition {
-  // Pull only the keys that belong to PromptFrontmatter — `tags` and
-  // `dependsOn` live on ParsedFrontmatter for orchestrator use but aren't
-  // part of the public PromptFrontmatter contract.
+  // Pull only the keys that belong to PromptFrontmatter — `tags`,
+  // `dependsOn`, and `wave` live on ParsedFrontmatter for orchestrator use
+  // but aren't part of the public PromptFrontmatter contract.
   const {
     title,
     continueSession,
@@ -104,9 +105,16 @@ function toPromptDefinition(parsed: ParsedPrompt, order: number): PromptDefiniti
     rollbackOnFail,
   };
 
+  // Wave fallback — when neither frontmatter nor the filename's numeric
+  // prefix supplied a wave, give this prompt its own unique wave so it runs
+  // sequentially, preserving legacy behavior. We use `order + 1` (1-based)
+  // so it never collides with explicit wave 0.
+  const wave = parsed.frontmatter.wave ?? order + 1;
+
   return {
     id: randomUUID(),
     order,
+    wave,
     filename: parsed.filename,
     content: parsed.content,
     frontmatter,
@@ -297,9 +305,20 @@ async function loadPlanFromDb(planId: string, db: SupabaseLikeClient): Promise<P
 
   const prompts: PromptDefinition[] = promptRows.map((row, idx) => {
     const fm = (row.frontmatter ?? {}) as Record<string, unknown>;
+    // Wave resolution mirrors the disk/upload paths: prefer an explicit
+    // `wave` stashed in the persisted frontmatter, then derive from the
+    // filename's numeric prefix, then fall back to a unique sequential wave
+    // (`idx + 1`). The DB row's frontmatter blob may have been written by
+    // an older code version that didn't know about `wave` — handle both.
+    const explicitWave = typeof fm["wave"] === "number" ? (fm["wave"] as number) : undefined;
+    const derivedWave =
+      explicitWave === undefined && row.filename ? deriveWaveFromFilename(row.filename) : undefined;
+    const wave = explicitWave ?? derivedWave ?? idx + 1;
+
     return {
       id: row.id,
       order: idx,
+      wave,
       filename: row.filename,
       content: row.content,
       frontmatter: {

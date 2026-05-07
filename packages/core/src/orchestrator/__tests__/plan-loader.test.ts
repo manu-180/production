@@ -96,6 +96,54 @@ describe("loadPlanFromDir", () => {
     const plan = await loadPlanFromDir(namedDir);
     expect(plan.name).toBe("my-cool-plan");
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Wave assignment
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it("assigns wave from filename numeric prefix", async () => {
+    await writeFile(join(dir, "01-setup.md"), "Setup");
+    await writeFile(join(dir, "02-api.md"), "API");
+    await writeFile(join(dir, "10-finalize.md"), "Finalize");
+
+    const plan = await loadPlanFromDir(dir);
+    expect(plan.prompts.map((p) => p.wave)).toEqual([1, 2, 10]);
+  });
+
+  it("groups parallel siblings (03a/03b/03c) into the same wave", async () => {
+    await writeFile(join(dir, "01-setup.md"), "Setup");
+    await writeFile(join(dir, "02-api.md"), "API");
+    await writeFile(join(dir, "03a-kpi.md"), "KPI");
+    await writeFile(join(dir, "03b-line.md"), "Line");
+    await writeFile(join(dir, "03c-bar.md"), "Bar");
+    await writeFile(join(dir, "04-typecheck.md"), "Typecheck");
+
+    const plan = await loadPlanFromDir(dir);
+    expect(plan.prompts.map((p) => ({ filename: p.filename, wave: p.wave }))).toEqual([
+      { filename: "01-setup.md", wave: 1 },
+      { filename: "02-api.md", wave: 2 },
+      { filename: "03a-kpi.md", wave: 3 },
+      { filename: "03b-line.md", wave: 3 },
+      { filename: "03c-bar.md", wave: 3 },
+      { filename: "04-typecheck.md", wave: 4 },
+    ]);
+  });
+
+  it("falls back to unique sequential wave when filename has no numeric prefix", async () => {
+    await writeFile(join(dir, "intro.md"), "Intro");
+    await writeFile(join(dir, "outro.md"), "Outro");
+
+    const plan = await loadPlanFromDir(dir);
+    // No collisions with explicit waves — uses (order + 1).
+    expect(plan.prompts.map((p) => p.wave)).toEqual([1, 2]);
+  });
+
+  it("frontmatter `wave` overrides filename-derived wave", async () => {
+    await writeFile(join(dir, "01-foo.md"), "---\nwave: 7\n---\nbody");
+
+    const plan = await loadPlanFromDir(dir);
+    expect(plan.prompts[0]?.wave).toBe(7);
+  });
 });
 
 describe("loadPlanFromUploaded", () => {

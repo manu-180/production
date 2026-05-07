@@ -120,4 +120,53 @@ Body
     expect(parsed.frontmatter.permissionMode).toBe("default");
     expect(parsed.content).toBe("");
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Wave derivation
+  // ───────────────────────────────────────────────────────────────────────────
+
+  describe("wave derivation", () => {
+    it("derives wave from numeric prefix '01-foo.md' → 1", () => {
+      const parsed = parsePromptFile("01-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(1);
+    });
+
+    it("derives wave from '03a-foo.md' (parallel sibling) → 3", () => {
+      const parsed = parsePromptFile("03a-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(3);
+    });
+
+    it("derives same wave for '03a' and '03b' (parallel siblings)", () => {
+      const a = parsePromptFile("03a-x.md", "body");
+      const b = parsePromptFile("03b-y.md", "body");
+      expect(a.frontmatter.wave).toBe(3);
+      expect(b.frontmatter.wave).toBe(3);
+    });
+
+    it("supports underscore separator '10_foo.md' → 10", () => {
+      const parsed = parsePromptFile("10_foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(10);
+    });
+
+    it("returns undefined wave when filename has no numeric prefix", () => {
+      const parsed = parsePromptFile("intro.md", "body");
+      expect(parsed.frontmatter.wave).toBeUndefined();
+    });
+
+    it("returns undefined wave when prefix is not purely numeric ('v2-foo.md')", () => {
+      const parsed = parsePromptFile("v2-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBeUndefined();
+    });
+
+    it("frontmatter wave overrides filename-derived wave", () => {
+      const raw = "---\nwave: 99\n---\nbody";
+      const parsed = parsePromptFile("01-foo.md", raw);
+      expect(parsed.frontmatter.wave).toBe(99);
+    });
+
+    it("tolerates leading zeros ('001-foo.md' → 1)", () => {
+      const parsed = parsePromptFile("001-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(1);
+    });
+  });
 });

@@ -20,6 +20,18 @@ export interface Plan {
 export interface PromptDefinition {
   id: string;
   order: number;
+  /**
+   * Wave number used to group prompts for parallel execution. Prompts that
+   * share the same wave run concurrently (subject to a concurrency cap);
+   * waves themselves run sequentially in ascending order.
+   *
+   * Derivation order (highest priority first):
+   *   1. Explicit `wave:` in frontmatter.
+   *   2. Numeric prefix on the filename (`03a-foo.md` → 3, `10-bar.md` → 10).
+   *   3. Fallback: `order + 1` so each prompt occupies its own wave
+   *      (matches legacy sequential behavior).
+   */
+  wave: number;
   filename: string | null;
   content: string;
   frontmatter: PromptFrontmatter;
