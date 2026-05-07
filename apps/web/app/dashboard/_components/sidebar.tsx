@@ -9,6 +9,7 @@ import {
   LayersIcon,
   LinkIcon,
   SettingsIcon,
+  TrendingUpIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -40,6 +41,12 @@ const NAV: NavItem[] = [
     label: "Perspectivas",
     icon: BarChart2Icon,
     match: (p) => p.startsWith("/dashboard/insights"),
+  },
+  {
+    href: "/dashboard/trends",
+    label: "Tendencias",
+    icon: TrendingUpIcon,
+    match: (p) => p.startsWith("/dashboard/trends"),
   },
   {
     href: "/dashboard/plans",
@@ -99,6 +106,7 @@ export function Sidebar({ className }: { className?: string }) {
               "/dashboard": "nav-dashboard",
               "/dashboard/runs": "nav-runs",
               "/dashboard/insights": "nav-insights",
+              "/dashboard/trends": "nav-trends",
               "/dashboard/plans": "nav-plans",
               "/dashboard/schedule": "nav-schedules",
               "/dashboard/templates": "nav-templates",
