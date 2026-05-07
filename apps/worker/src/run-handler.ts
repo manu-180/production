@@ -154,7 +154,13 @@ export class RunHandler {
       let runInitDone = false;
       let runInit: Awaited<ReturnType<typeof checkpointManager.initRun>> | null = null;
       try {
-        runInit = await checkpointManager.initRun(repoInitResult.originalBranch);
+        // noBranch:true — single-developer workflow. All conductor commits land
+        // directly on the original branch (typically `main`). No conductor/run-*
+        // branches are created or merged. Configured per CLAUDE.md: "REGLA
+        // ABSOLUTA: SOLO main, NUNCA crear branches".
+        runInit = await checkpointManager.initRun(repoInitResult.originalBranch, {
+          noBranch: true,
+        });
         runInitDone = true;
 
         // Pre-populate prompt metadata for richer commit messages.
@@ -198,6 +204,26 @@ export class RunHandler {
         return;
       }
 
+      // Skip-if-already-done: collect prompt_ids that succeeded in any prior
+      // run of this same plan. The orchestrator marks these as `skipped` and
+      // doesn't re-execute them — avoids duplicate work and duplicate commits
+      // when the user re-launches a plan whose earlier run was cancelled.
+      const alreadyDonePromptIds = await this.loadAlreadyDonePromptIds(
+        supabase,
+        runRow.plan_id,
+        this._runId,
+      );
+      if (alreadyDonePromptIds.size > 0) {
+        this.logger.info(
+          {
+            runId: this._runId,
+            planId: runRow.plan_id,
+            count: alreadyDonePromptIds.size,
+          },
+          "skip-if-already-done: prompts to skip from prior runs",
+        );
+      }
+
       const pauseController = new PauseController();
       const logger = this.logger;
       this.orchestrator = new Orchestrator({
@@ -210,6 +236,7 @@ export class RunHandler {
           logger.debug({ runId: this._runId, event }, "run event");
         },
         checkpoint: checkpointManager,
+        alreadyDonePromptIds,
       });
 
       this.logger.info(
@@ -427,5 +454,71 @@ export class RunHandler {
       return null;
     }
     return { plan_id: row.plan_id, working_dir: row.working_dir };
+  }
+
+  /**
+   * Returns the set of prompt ids that have at least one `succeeded`
+   * `prompt_executions` row across any prior run of the same plan (excluding
+   * the current run). Used by skip-if-already-done so the orchestrator can
+   * avoid re-executing prompts that were already completed.
+   *
+   * Failures are logged and turned into an empty set — when in doubt we
+   * prefer re-execution (correctness) over skipping (cost optimization).
+   */
+  private async loadAlreadyDonePromptIds(
+    supabase: SupabaseClient,
+    planId: string,
+    currentRunId: string,
+  ): Promise<Set<string>> {
+    try {
+      // 1) all run ids for this plan, excluding the current one.
+      const { data: runRows, error: runErr } = await supabase
+        .from("runs")
+        .select("id")
+        .eq("plan_id", planId)
+        .neq("id", currentRunId);
+
+      if (runErr !== null) {
+        this.logger.warn(
+          { planId, currentRunId, err: runErr },
+          "skip-if-already-done: failed to list prior runs — will re-execute everything",
+        );
+        return new Set();
+      }
+
+      const priorRunIds = (runRows ?? [])
+        .map((r) => (r as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+      if (priorRunIds.length === 0) return new Set();
+
+      // 2) succeeded prompt_ids in those runs.
+      const { data: peRows, error: peErr } = await supabase
+        .from("prompt_executions")
+        .select("prompt_id")
+        .in("run_id", priorRunIds)
+        .eq("status", "succeeded");
+
+      if (peErr !== null) {
+        this.logger.warn(
+          { planId, currentRunId, err: peErr },
+          "skip-if-already-done: failed to list succeeded prompts — will re-execute everything",
+        );
+        return new Set();
+      }
+
+      const ids = new Set<string>();
+      for (const row of peRows ?? []) {
+        const pid = (row as { prompt_id?: unknown }).prompt_id;
+        if (typeof pid === "string" && pid.length > 0) ids.add(pid);
+      }
+      return ids;
+    } catch (err) {
+      this.logger.warn(
+        { planId, currentRunId, err },
+        "skip-if-already-done: query threw — will re-execute everything",
+      );
+      return new Set();
+    }
   }
 }
