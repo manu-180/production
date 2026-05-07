@@ -33,6 +33,7 @@ import type { GuardianDecision, Plan, PromptDefinition, RunEvent, TokenUsage } f
 import { type ExecutionContext, addUsage, createExecutionContext } from "./execution-context.js";
 import { CancelledError, type PauseController } from "./pause-controller.js";
 import { ProgressEmitter } from "./progress-emitter.js";
+import { groupIntoWaves, runWithConcurrencyLimit } from "./wave-grouper.js";
 
 /**
  * Default retries per prompt when frontmatter doesn't specify.
@@ -592,6 +593,47 @@ async function clearResumeState(db: DbClient, runId: string): Promise<void> {
   }
 }
 
+/**
+ * Sets `prompt_executions.checkpoint_sha` on a successful row. Used by the
+ * orchestrator to patch every prompt in a parallel wave with the wave's single
+ * commit sha after the wave-level checkpoint commit. Errors are logged but
+ * never thrown.
+ */
+async function setCheckpointShaOnExecution(
+  db: DbClient,
+  executionId: string,
+  sha: string,
+): Promise<void> {
+  if (sha.length === 0) return;
+  try {
+    const { error } = await db
+      .from("prompt_executions")
+      .update({ checkpoint_sha: sha })
+      .eq("id", executionId);
+    if (error !== null && error !== undefined) {
+      console.warn(`[Orchestrator] setCheckpointShaOnExecution(${executionId}) error:`, error);
+    }
+  } catch (err) {
+    console.warn(`[Orchestrator] setCheckpointShaOnExecution(${executionId}) threw:`, err);
+  }
+}
+
+/**
+ * Outcome of {@link Orchestrator._executePromptCore}. Cancellation is modeled
+ * as a discriminated case rather than an exception so the wave-level caller
+ * can short-circuit without unwinding through try/catch.
+ */
+type PromptOutcome =
+  | {
+      kind: "succeeded";
+      result: ExecutionResult;
+      executionId: string;
+      toolsUsed: Set<string>;
+      guardianDecisions: number;
+    }
+  | { kind: "failed"; error: string; errorCode: string }
+  | { kind: "cancelled"; reason: string };
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Orchestrator
 // ─────────────────────────────────────────────────────────────────────────────
@@ -706,37 +748,53 @@ export class Orchestrator {
 
     let lastGoodSha = "";
 
-    for (let i = 0; i < sortedPrompts.length; i++) {
-      const prompt = sortedPrompts[i];
-      if (!prompt) continue;
+    const waves = groupIntoWaves(sortedPrompts);
 
-      if (i < resumeFromIndex) {
-        await markPromptSkipped(this.db, this.runId, prompt.id, "resumed_from_index");
-        console.info(`[Orchestrator] skipping prompt ${prompt.id} (index ${i}) for resume`);
-        context.currentPromptIndex++;
-        continue;
+    const cancelledResult = (): RunResult => ({
+      status: "cancelled",
+      totalCostUsd: context.accumulatedCostUsd,
+      totalDurationMs: Date.now() - startTime,
+      completedPrompts: context.currentPromptIndex,
+    });
+
+    for (const wave of waves) {
+      // ── Per-prompt skip handling (resume + explicit skip) ─────────────────
+      // Each prompt in the wave is checked individually. Skipped prompts are
+      // removed from the active set; if everything in the wave is skipped we
+      // move on to the next wave.
+      const activePrompts: PromptDefinition[] = [];
+      const activeIndices: number[] = [];
+      for (let j = 0; j < wave.prompts.length; j++) {
+        const idx = wave.startIndex + j;
+        const p = wave.prompts[j];
+        if (!p) continue;
+
+        if (idx < resumeFromIndex) {
+          await markPromptSkipped(this.db, this.runId, p.id, "resumed_from_index");
+          console.info(`[Orchestrator] skipping prompt ${p.id} (index ${idx}) for resume`);
+          context.currentPromptIndex++;
+          continue;
+        }
+        const skipReason = this.skipped.get(p.id);
+        if (skipReason !== undefined) {
+          // No `prompt.skipped` variant in RunEvent yet; we surface it as a
+          // `prompt.failed` with willRetry=false (closest existing shape).
+          await this.emit({
+            type: "prompt.failed",
+            promptId: p.id,
+            error: `Skipped: ${skipReason}`,
+            willRetry: false,
+          });
+          this.skipped.delete(p.id);
+          context.currentPromptIndex++;
+          continue;
+        }
+        activePrompts.push(p);
+        activeIndices.push(idx);
       }
+      if (activePrompts.length === 0) continue;
 
-      // Honor skip requests before doing any work for this prompt.
-      // No `prompt.skipped` variant exists in RunEvent yet, so we emit
-      // `prompt.failed` with `willRetry: false` as the closest approximation
-      // and remove the consumed entry so a later re-run won't auto-skip.
-      const skipReason = this.skipped.get(prompt.id);
-      if (skipReason !== undefined) {
-        await this.emit({
-          type: "prompt.failed",
-          promptId: prompt.id,
-          error: `Skipped: ${skipReason}`,
-          willRetry: false,
-        });
-        this.skipped.delete(prompt.id);
-        context.currentPromptIndex++;
-        continue;
-      }
-
-      // Check pause/cancel BEFORE each prompt. If paused, persist the
-      // 'paused' state to the DB so external observers see the run is
-      // paused, then restore 'running' once we resume.
+      // ── Pause / cancel BEFORE the wave ────────────────────────────────────
       const wasPaused = this.pauseController.isPaused();
       if (wasPaused) {
         await updateRunStatus(this.runId, "paused", this.db);
@@ -747,402 +805,202 @@ export class Orchestrator {
       } catch (err) {
         if (err instanceof CancelledError) {
           await updateRunStatus(this.runId, "cancelled", this.db);
-          return {
-            status: "cancelled",
-            totalCostUsd: context.accumulatedCostUsd,
-            totalDurationMs: Date.now() - startTime,
-            completedPrompts: context.currentPromptIndex,
-          };
+          return cancelledResult();
         }
         throw err;
       }
       if (wasPaused && !this.pauseController.isCancelled() && !this.pauseController.isPaused()) {
         await updateRunStatus(this.runId, "running", this.db);
       }
-
       if (this.pauseController.isCancelled()) {
         await updateRunStatus(this.runId, "cancelled", this.db);
+        return cancelledResult();
+      }
+
+      const isParallel = activePrompts.length > 1;
+
+      // ── Emit prompt.started for every active prompt in the wave ───────────
+      for (let j = 0; j < activePrompts.length; j++) {
+        const p = activePrompts[j];
+        const idx = activeIndices[j];
+        if (!p || idx === undefined) continue;
+        await this.emit({
+          type: "prompt.started",
+          promptId: p.id,
+          index: idx,
+          total: sortedPrompts.length,
+        });
+      }
+
+      if (isParallel) {
+        // Parallel waves cannot share a single sessionId across siblings —
+        // surface a warning for any prompt that requested continueSession so
+        // the operator notices.
+        for (const p of activePrompts) {
+          if (p.frontmatter.continueSession === true) {
+            console.warn(
+              `[Orchestrator] continueSession=true ignored for prompt ${p.id} in parallel wave ${wave.wave} (siblings cannot share a session)`,
+            );
+          }
+        }
+      }
+
+      // ── Execute (single-prompt fast path or parallel concurrency-limited) ─
+      const tasks = activePrompts.map(
+        (p) => () =>
+          this._executePromptCore(p, context, startTime, { ignoreContinueSession: isParallel }),
+      );
+      const settled = isParallel
+        ? await runWithConcurrencyLimit(3, tasks)
+        : await runWithConcurrencyLimit(1, tasks);
+
+      // Normalize: rejected promises (shouldn't happen — _executePromptCore
+      // never throws) are coerced to a synthetic failed outcome.
+      const outcomes = settled.map((s): PromptOutcome => {
+        if (s.status === "fulfilled") return s.value;
         return {
-          status: "cancelled",
+          kind: "failed",
+          error: errorMessage(s.reason),
+          errorCode: "UNKNOWN",
+        };
+      });
+
+      // ── Cancellation: any cancelled outcome wins ──────────────────────────
+      if (outcomes.some((o) => o.kind === "cancelled")) {
+        await updateRunStatus(this.runId, "cancelled", this.db);
+        return cancelledResult();
+      }
+
+      // ── Failure: terminate run; sibling successes already wrote their rows
+      const firstFailedIdx = outcomes.findIndex((o) => o.kind === "failed");
+      if (firstFailedIdx !== -1) {
+        const failedPrompt = activePrompts[firstFailedIdx];
+        const failedOutcome = outcomes[firstFailedIdx];
+        if (!failedPrompt || !failedOutcome || failedOutcome.kind !== "failed") {
+          // Defensive — should never trigger.
+          await updateRunStatus(this.runId, "failed", this.db);
+          await clearResumeState(this.db, this.runId);
+          return {
+            status: "failed",
+            totalCostUsd: context.accumulatedCostUsd,
+            totalDurationMs: Date.now() - startTime,
+            completedPrompts: context.currentPromptIndex,
+            error: "internal: failed outcome missing",
+          };
+        }
+
+        if (
+          failedPrompt.frontmatter.rollbackOnFail === true &&
+          this.checkpoint &&
+          lastGoodSha.length > 0
+        ) {
+          try {
+            await this.checkpoint.rollback(lastGoodSha);
+          } catch (rollbackErr) {
+            console.error("[Orchestrator] rollback failed:", rollbackErr);
+          }
+        }
+
+        await updateRunStatus(this.runId, "failed", this.db);
+        await clearResumeState(this.db, this.runId);
+        await this.emit({
+          type: "run.failed",
+          failedAtPromptId: failedPrompt.id,
+          error: failedOutcome.error,
+        });
+        return {
+          status: "failed",
           totalCostUsd: context.accumulatedCostUsd,
           totalDurationMs: Date.now() - startTime,
           completedPrompts: context.currentPromptIndex,
+          failedPromptId: failedPrompt.id,
+          error: failedOutcome.error,
         };
       }
 
-      await this.emit({
-        type: "prompt.started",
-        promptId: prompt.id,
-        index: context.currentPromptIndex,
-        total: sortedPrompts.length,
-      });
+      // ── All prompts in this wave succeeded ────────────────────────────────
+      // Cast: we've ruled out failed/cancelled above.
+      const successes = outcomes as Array<Extract<PromptOutcome, { kind: "succeeded" }>>;
 
-      const retries = prompt.frontmatter.retries ?? DEFAULT_PROMPT_RETRIES;
-      const maxAttempts = Math.max(1, retries + 1);
-      let attempt = 1;
-      let lastError: string | undefined;
-      let succeeded = false;
-
-      while (attempt <= maxAttempts) {
-        let executionId: string;
-        try {
-          executionId = await createPromptExecution(prompt, attempt, this.runId, this.db);
-        } catch (err) {
-          // DB insert failures are infra-level, not Claude-level. Always treat
-          // as transient and use the default backoff policy.
-          lastError = errorMessage(err);
-          const willRetry = attempt < maxAttempts;
-          await this.emit({
-            type: "prompt.failed",
-            promptId: prompt.id,
-            error: lastError,
-            willRetry,
-          });
-          if (willRetry) {
-            await sleep(
-              nextDelay(DEFAULT_RETRY_POLICY, attempt),
-              this.pauseController.getSignal(),
-            ).catch(() => {});
-            if (this.pauseController.isCancelled()) {
-              await updateRunStatus(this.runId, "cancelled", this.db);
-              return {
-                status: "cancelled",
-                totalCostUsd: context.accumulatedCostUsd,
-                totalDurationMs: Date.now() - startTime,
-                completedPrompts: context.currentPromptIndex,
-              };
+      // Feed execution metadata for each prompt before committing the (single)
+      // checkpoint. Best-effort — failures here must not block commit.
+      let sha = "";
+      if (this.checkpoint) {
+        if (typeof this.checkpoint.setExecutionMeta === "function") {
+          for (let j = 0; j < activePrompts.length; j++) {
+            const p = activePrompts[j];
+            const o = successes[j];
+            if (!p || !o) continue;
+            try {
+              const usage = mapTokenUsage(o.result.usage);
+              this.checkpoint.setExecutionMeta(p.id, {
+                tokensIn: usage.input,
+                tokensOut: usage.output,
+                tokensCache: usage.cacheRead + usage.cacheCreation,
+                costUsd: o.result.costUsd,
+                durationMs: o.result.durationMs,
+                toolsUsed: Array.from(o.toolsUsed),
+                guardianDecisions: o.guardianDecisions,
+              });
+            } catch (metaErr) {
+              console.error(
+                `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${p.id}:`,
+                metaErr,
+              );
             }
-            attempt++;
-            continue;
           }
-          break;
         }
-
-        const heartbeat = startPromptHeartbeat(this.db, executionId);
-        try {
+        // For parallel waves, attribute the single commit to the FIRST prompt
+        // of the wave (its id makes the commit message stable in git log).
+        const headPrompt = activePrompts[0];
+        const headSuccess = successes[0];
+        if (headPrompt && headSuccess) {
           try {
-            // Guardian intervention loop. Every iteration spawns a Claude
-            // process and waits for it. On success, the Guardian (if
-            // configured) inspects the last assistant message; when it detects
-            // a question it returns a `guardianResponse` we resume the session
-            // with as the next prompt. The loop ends when either Guardian
-            // declines to intervene (success path) or it hits the intervention
-            // ceiling (terminal `GUARDIAN_LOOP` failure).
-            let guardianInterventionCount = 0;
-            let nextPromptText: string | null = null;
-            let nextResumeSessionId: string | null = null;
-            let result: ExecutionResult;
-            const toolsUsedThisPrompt = new Set<string>();
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-              const baseOpts = buildClaudeOptions(prompt, context);
-              const claudeOpts: ClaudeProcessOptions = { ...baseOpts };
-
-              if (nextPromptText !== null) {
-                // Guardian is feeding a follow-up answer back into the same
-                // session — override prompt + resumeSessionId regardless of
-                // what `buildClaudeOptions` produced.
-                claudeOpts.prompt = nextPromptText;
-                if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
-                  claudeOpts.resumeSessionId = nextResumeSessionId;
-                }
-              } else if (this.guardian) {
-                // First iteration of this attempt — inject Guardian guidelines
-                // into the prompt body so Claude has the rules from the start.
-                const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
-                claudeOpts.prompt = injection.prompt;
-              }
-
-              claudeOpts.onActivity = () => {
-                heartbeat.notifyActivity();
-              };
-              const proc = new ClaudeProcess(claudeOpts, buildEnv());
-              await proc.start();
-
-              // Race the process against the pause controller's cancel flag.
-              // If the user cancels mid-execution, we kill the spawned Claude
-              // process instead of waiting for the next prompt boundary.
-              const pauseController = this.pauseController;
-              const cancelPromise = new Promise<never>((_resolve, reject) => {
-                const checkCancel = setInterval(() => {
-                  if (pauseController.isCancelled()) {
-                    clearInterval(checkCancel);
-                    void proc.kill("user cancelled");
-                    reject(new CancelledError(pauseController.getCancelReason()));
-                  }
-                }, 500);
-                proc
-                  .wait()
-                  .finally(() => clearInterval(checkCancel))
-                  .catch(() => undefined);
-              });
-
-              try {
-                result = await Promise.race([proc.wait(), cancelPromise]);
-              } catch (raceErr) {
-                if (raceErr instanceof CancelledError) {
-                  await updatePromptExecution(executionId, "failed", null, "", this.db, {
-                    code: "CANCELLED",
-                    message: raceErr.message,
-                  });
-                  await updateRunStatus(this.runId, "cancelled", this.db);
-                  return {
-                    status: "cancelled",
-                    totalCostUsd: context.accumulatedCostUsd,
-                    totalDurationMs: Date.now() - startTime,
-                    completedPrompts: context.currentPromptIndex,
-                  };
-                }
-                throw raceErr;
-              }
-
-              // Stream tool_use / tool_result events to the progress emitter.
-              for (const event of result.capturedEvents) {
-                if (event.type === "tool_use") {
-                  toolsUsedThisPrompt.add(event.name);
-                  await this.emit({
-                    type: "prompt.tool_use",
-                    promptId: prompt.id,
-                    tool: event.name,
-                    input: event.input,
-                  });
-                } else if (event.type === "tool_result") {
-                  await this.emit({
-                    type: "prompt.tool_result",
-                    promptId: prompt.id,
-                    tool: event.tool_use_id,
-                    output: event.content,
-                  });
-                }
-              }
-
-              if (result.finalStatus !== "success") {
-                // Non-success terminal status from the Claude process. Bubble
-                // up to the outer `catch` so retry/backoff kicks in.
-                const procErrMsg =
-                  result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
-                const err = new Error(procErrMsg);
-                (err as Error & { stderrRaw?: string; stdoutRaw?: string }).stderrRaw =
-                  result.stderrRaw;
-                (err as Error & { stdoutRaw?: string }).stdoutRaw = result.stdoutRaw;
-                throw err;
-              }
-
-              // Always accumulate usage for completed turns — even mid-Guardian
-              // iterations spent real tokens.
-              addUsage(context, mapTokenUsage(result.usage), result.costUsd);
-
-              // Guardian wiring: inspect the last assistant message and decide
-              // whether to feed a follow-up back into the same session.
-              if (this.guardian) {
-                const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
-                const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
-                const promptContext = buildPromptContext(prompt);
-
-                // Note: the executor does not surface a top-level `stopReason`,
-                // so we omit it here. The detector falls back to other signals
-                // (heuristics on the message text + `hasToolUse`) when stopReason
-                // is missing.
-                const intervention = await this.guardian.checkAndDecide({
-                  lastAssistantMessage,
-                  hasToolUse,
-                  promptContext,
-                  recentMessages,
-                  currentInterventionCount: guardianInterventionCount,
-                });
-
-                if (intervention.loopLimitReached) {
-                  throw new GuardianLoopError("Guardian exceeded maximum interventions");
-                }
-
-                if (intervention.intervened && intervention.guardianResponse) {
-                  const decision = intervention.decision;
-                  const detection = intervention.detectionResult;
-                  if (decision && detection) {
-                    const guardianDecision: GuardianDecision = {
-                      id: `${executionId}:gi:${intervention.interventionCount}`,
-                      promptExecutionId: executionId,
-                      questionDetected: detection.extractedQuestion ?? lastAssistantMessage,
-                      reasoning: decision.reasoning,
-                      decision: decision.decision,
-                      confidence: decision.confidence,
-                      strategy: decision.strategy === "llm" ? "llm" : "heuristic",
-                      decidedAt: isoNow(),
-                    };
-                    await this.emit({
-                      type: "prompt.guardian_intervention",
-                      decision: guardianDecision,
-                    });
-                  }
-
-                  // Update lastSessionId so any later prompt that resumes this
-                  // session does so from the most recent turn.
-                  if (result.sessionId.length > 0) {
-                    context.lastSessionId = result.sessionId;
-                  }
-
-                  guardianInterventionCount = intervention.interventionCount;
-                  nextPromptText = intervention.guardianResponse;
-                  nextResumeSessionId = result.sessionId;
-                  continue;
-                }
-              }
-
-              // No intervention required — the prompt is done.
-              break;
-            }
-
-            // ── Successful prompt completion ──────────────────────────────
-            let sha = "";
-            if (this.checkpoint) {
-              // Feed execution metadata to the checkpoint manager (if it supports
-              // it) so commit messages can include per-prompt stats. Best-effort
-              // — failures here must not block commit.
-              if (typeof this.checkpoint.setExecutionMeta === "function") {
-                try {
-                  const usage = mapTokenUsage(result.usage);
-                  this.checkpoint.setExecutionMeta(prompt.id, {
-                    tokensIn: usage.input,
-                    tokensOut: usage.output,
-                    tokensCache: usage.cacheRead + usage.cacheCreation,
-                    costUsd: result.costUsd,
-                    durationMs: result.durationMs,
-                    toolsUsed: Array.from(toolsUsedThisPrompt),
-                    guardianDecisions: guardianInterventionCount,
-                  });
-                } catch (metaErr) {
-                  console.error(
-                    `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${prompt.id}:`,
-                    metaErr,
-                  );
-                }
-              }
-              try {
-                sha = await this.checkpoint.commit(prompt.id, executionId);
-                lastGoodSha = sha;
-                await this.emit({
-                  type: "prompt.checkpoint_created",
-                  promptId: prompt.id,
-                  sha,
-                });
-              } catch (err) {
-                console.error(
-                  `[Orchestrator] checkpoint.commit failed for prompt ${prompt.id}:`,
-                  err,
-                );
-              }
-            }
-
-            await updatePromptExecution(executionId, "succeeded", result, sha, this.db);
-            await updateLastSucceededIndex(this.db, this.runId, i);
-
-            if (result.sessionId.length > 0) {
-              context.lastSessionId = result.sessionId;
-            }
-
+            sha = await this.checkpoint.commit(headPrompt.id, headSuccess.executionId);
+            lastGoodSha = sha;
             await this.emit({
-              type: "prompt.completed",
-              promptId: prompt.id,
-              tokens: mapTokenUsage(result.usage),
-              costUsd: result.costUsd,
+              type: "prompt.checkpoint_created",
+              promptId: headPrompt.id,
+              sha,
             });
-
-            context.currentPromptIndex++;
-            succeeded = true;
-            break;
           } catch (err) {
-            lastError = errorMessage(err);
-            // Recovery-aware classification: GuardianLoopError + non-retryable
-            // ExecutorError categories (auth/config/system) break out
-            // immediately. Rate-limited errors carry a `Retry-After`-derived
-            // wait. Anything else uses the default exponential-jitter backoff.
-            const decision = classifyRetry(err, attempt);
-            const isGuardianLoop = err instanceof GuardianLoopError;
-            const executorErrCode = err instanceof ExecutorError ? err.code : null;
-            const errCode = buildErrorCode({
-              isGuardianLoop,
-              classified: decision.classified,
-              executorErrCode,
-            });
-
-            const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
-            const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
-            await updatePromptExecution(executionId, "failed", null, "", this.db, {
-              code: errCode,
-              message: lastError,
-              raw: rawDiag,
-            });
-
-            const willRetry = decision.retry && attempt < maxAttempts;
-
-            if (decision.classified?.category === "rate_limit") {
-              await this.emit({
-                type: "prompt.rate_limited",
-                promptId: prompt.id,
-                waitMs: decision.waitMs,
-                attempt,
-              });
-            }
-
-            await this.emit({
-              type: "prompt.failed",
-              promptId: prompt.id,
-              error: lastError,
-              willRetry,
-            });
-
-            if (willRetry) {
-              await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
-              if (this.pauseController.isCancelled()) {
-                await updateRunStatus(this.runId, "cancelled", this.db);
-                return {
-                  status: "cancelled",
-                  totalCostUsd: context.accumulatedCostUsd,
-                  totalDurationMs: Date.now() - startTime,
-                  completedPrompts: context.currentPromptIndex,
-                };
-              }
-              attempt++;
-              continue;
-            }
-            break;
+            console.error(
+              `[Orchestrator] checkpoint.commit failed for wave starting at ${headPrompt.id}:`,
+              err,
+            );
           }
-        } finally {
-          heartbeat.stop();
         }
       }
 
-      if (succeeded) continue;
-
-      // Exhausted retries — terminal failure for this run.
-      if (prompt.frontmatter.rollbackOnFail === true && this.checkpoint && lastGoodSha.length > 0) {
-        try {
-          await this.checkpoint.rollback(lastGoodSha);
-        } catch (rollbackErr) {
-          console.error("[Orchestrator] rollback failed:", rollbackErr);
+      // Patch every successful prompt_executions row with the wave's sha
+      // (so resume/inspection can locate the commit per prompt).
+      if (sha.length > 0) {
+        for (const o of successes) {
+          await setCheckpointShaOnExecution(this.db, o.executionId, sha);
         }
       }
 
-      await updateRunStatus(this.runId, "failed", this.db);
-      await clearResumeState(this.db, this.runId);
-      const finalError = lastError ?? "unknown error";
-      await this.emit({
-        type: "run.failed",
-        failedAtPromptId: prompt.id,
-        error: finalError,
-      });
-      return {
-        status: "failed",
-        totalCostUsd: context.accumulatedCostUsd,
-        totalDurationMs: Date.now() - startTime,
-        completedPrompts: context.currentPromptIndex,
-        failedPromptId: prompt.id,
-        error: finalError,
-      };
+      // Bookkeeping: advance to the LAST index of the wave, emit completed
+      // events in original order, and bump currentPromptIndex by N.
+      const lastIdx = activeIndices[activeIndices.length - 1];
+      if (typeof lastIdx === "number") {
+        await updateLastSucceededIndex(this.db, this.runId, lastIdx);
+      }
+      for (let j = 0; j < activePrompts.length; j++) {
+        const p = activePrompts[j];
+        const o = successes[j];
+        if (!p || !o) continue;
+        await this.emit({
+          type: "prompt.completed",
+          promptId: p.id,
+          tokens: mapTokenUsage(o.result.usage),
+          costUsd: o.result.costUsd,
+        });
+        context.currentPromptIndex++;
+      }
     }
 
-    // All prompts completed.
+    // All waves completed.
     const totalDurationMs = Date.now() - startTime;
     await updateRunStatus(this.runId, "completed", this.db);
     await clearResumeState(this.db, this.runId);
@@ -1156,6 +1014,298 @@ export class Orchestrator {
       totalCostUsd: context.accumulatedCostUsd,
       totalDurationMs,
       completedPrompts: sortedPrompts.length,
+    };
+  }
+
+  /**
+   * Executes a single prompt end-to-end including retry/backoff and the
+   * Guardian intervention loop. Owns:
+   *   - `prompt_executions` row creation/update for every attempt
+   *   - usage accumulation in {@link ExecutionContext}
+   *   - cancel detection (returns `{ kind: "cancelled" }` instead of throwing)
+   *   - emitting `prompt.tool_use` / `prompt.tool_result` /
+   *     `prompt.guardian_intervention` / `prompt.rate_limited` /
+   *     `prompt.failed` events
+   *
+   * Does NOT own:
+   *   - `prompt.started` / `prompt.completed` emission (caller's job)
+   *   - Checkpoint commit (caller wraps the wave in a single commit)
+   *   - `runs.last_succeeded_prompt_index` / `currentPromptIndex` bookkeeping
+   *   - `prompt_executions.checkpoint_sha` patching (caller does it after the
+   *     wave's checkpoint commit, so all sibling rows share the wave's sha)
+   *
+   * On success, the row is updated with `status='succeeded'` and an empty
+   * `checkpoint_sha`; the caller patches it afterwards via
+   * {@link setCheckpointShaOnExecution}.
+   *
+   * @param opts.ignoreContinueSession - When true, strip any inherited
+   *   `resumeSessionId` before spawning Claude. Used for parallel waves
+   *   where siblings cannot share a session id.
+   */
+  private async _executePromptCore(
+    prompt: PromptDefinition,
+    context: ExecutionContext,
+    _runStartTime: number,
+    opts: { ignoreContinueSession: boolean },
+  ): Promise<PromptOutcome> {
+    const retries = prompt.frontmatter.retries ?? DEFAULT_PROMPT_RETRIES;
+    const maxAttempts = Math.max(1, retries + 1);
+    let attempt = 1;
+    let lastError: string | undefined;
+    let lastErrorCode = "UNKNOWN";
+
+    while (attempt <= maxAttempts) {
+      let executionId: string;
+      try {
+        executionId = await createPromptExecution(prompt, attempt, this.runId, this.db);
+      } catch (err) {
+        // DB insert failures are infra-level, not Claude-level — always treat
+        // as transient with default backoff.
+        lastError = errorMessage(err);
+        lastErrorCode = "DB_INSERT";
+        const willRetry = attempt < maxAttempts;
+        await this.emit({
+          type: "prompt.failed",
+          promptId: prompt.id,
+          error: lastError,
+          willRetry,
+        });
+        if (willRetry) {
+          await sleep(
+            nextDelay(DEFAULT_RETRY_POLICY, attempt),
+            this.pauseController.getSignal(),
+          ).catch(() => {});
+          if (this.pauseController.isCancelled()) {
+            return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
+          }
+          attempt++;
+          continue;
+        }
+        break;
+      }
+
+      const heartbeat = startPromptHeartbeat(this.db, executionId);
+      try {
+        try {
+          let guardianInterventionCount = 0;
+          let nextPromptText: string | null = null;
+          let nextResumeSessionId: string | null = null;
+          let result: ExecutionResult;
+          const toolsUsedThisPrompt = new Set<string>();
+
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const baseOpts = buildClaudeOptions(prompt, context);
+            const claudeOpts: ClaudeProcessOptions = { ...baseOpts };
+            if (opts.ignoreContinueSession) {
+              // Parallel siblings cannot share a session — strip any inherited
+              // resume id so each prompt starts fresh.
+              claudeOpts.resumeSessionId = undefined;
+            }
+
+            if (nextPromptText !== null) {
+              // Guardian feeding a follow-up answer back into the same session.
+              claudeOpts.prompt = nextPromptText;
+              if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
+                claudeOpts.resumeSessionId = nextResumeSessionId;
+              }
+            } else if (this.guardian) {
+              const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
+              claudeOpts.prompt = injection.prompt;
+            }
+
+            claudeOpts.onActivity = () => {
+              heartbeat.notifyActivity();
+            };
+            const proc = new ClaudeProcess(claudeOpts, buildEnv());
+            await proc.start();
+
+            const pauseController = this.pauseController;
+            const cancelPromise = new Promise<never>((_resolve, reject) => {
+              const checkCancel = setInterval(() => {
+                if (pauseController.isCancelled()) {
+                  clearInterval(checkCancel);
+                  void proc.kill("user cancelled");
+                  reject(new CancelledError(pauseController.getCancelReason()));
+                }
+              }, 500);
+              proc
+                .wait()
+                .finally(() => clearInterval(checkCancel))
+                .catch(() => undefined);
+            });
+
+            try {
+              result = await Promise.race([proc.wait(), cancelPromise]);
+            } catch (raceErr) {
+              if (raceErr instanceof CancelledError) {
+                await updatePromptExecution(executionId, "failed", null, "", this.db, {
+                  code: "CANCELLED",
+                  message: raceErr.message,
+                });
+                return { kind: "cancelled", reason: raceErr.message };
+              }
+              throw raceErr;
+            }
+
+            for (const event of result.capturedEvents) {
+              if (event.type === "tool_use") {
+                toolsUsedThisPrompt.add(event.name);
+                await this.emit({
+                  type: "prompt.tool_use",
+                  promptId: prompt.id,
+                  tool: event.name,
+                  input: event.input,
+                });
+              } else if (event.type === "tool_result") {
+                await this.emit({
+                  type: "prompt.tool_result",
+                  promptId: prompt.id,
+                  tool: event.tool_use_id,
+                  output: event.content,
+                });
+              }
+            }
+
+            if (result.finalStatus !== "success") {
+              const procErrMsg =
+                result.errorMessage ?? `Claude process ended with status: ${result.finalStatus}`;
+              const err = new Error(procErrMsg);
+              (err as Error & { stderrRaw?: string; stdoutRaw?: string }).stderrRaw =
+                result.stderrRaw;
+              (err as Error & { stdoutRaw?: string }).stdoutRaw = result.stdoutRaw;
+              throw err;
+            }
+
+            addUsage(context, mapTokenUsage(result.usage), result.costUsd);
+
+            if (this.guardian) {
+              const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
+              const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
+              const promptContext = buildPromptContext(prompt);
+
+              const intervention = await this.guardian.checkAndDecide({
+                lastAssistantMessage,
+                hasToolUse,
+                promptContext,
+                recentMessages,
+                currentInterventionCount: guardianInterventionCount,
+              });
+
+              if (intervention.loopLimitReached) {
+                throw new GuardianLoopError("Guardian exceeded maximum interventions");
+              }
+
+              if (intervention.intervened && intervention.guardianResponse) {
+                const decision = intervention.decision;
+                const detection = intervention.detectionResult;
+                if (decision && detection) {
+                  const guardianDecision: GuardianDecision = {
+                    id: `${executionId}:gi:${intervention.interventionCount}`,
+                    promptExecutionId: executionId,
+                    questionDetected: detection.extractedQuestion ?? lastAssistantMessage,
+                    reasoning: decision.reasoning,
+                    decision: decision.decision,
+                    confidence: decision.confidence,
+                    strategy: decision.strategy === "llm" ? "llm" : "heuristic",
+                    decidedAt: isoNow(),
+                  };
+                  await this.emit({
+                    type: "prompt.guardian_intervention",
+                    decision: guardianDecision,
+                  });
+                }
+
+                if (result.sessionId.length > 0) {
+                  context.lastSessionId = result.sessionId;
+                }
+
+                guardianInterventionCount = intervention.interventionCount;
+                nextPromptText = intervention.guardianResponse;
+                nextResumeSessionId = result.sessionId;
+                continue;
+              }
+            }
+
+            // No intervention required — the prompt is done.
+            break;
+          }
+
+          // ── Successful prompt completion ────────────────────────────────
+          // Write the row with empty sha — the caller patches it after the
+          // wave-level checkpoint commit so all sibling rows share one sha.
+          await updatePromptExecution(executionId, "succeeded", result, "", this.db);
+
+          if (result.sessionId.length > 0) {
+            // Parallel: last writer wins (acceptable per design — siblings
+            // cannot meaningfully share continueSession anyway).
+            context.lastSessionId = result.sessionId;
+          }
+
+          return {
+            kind: "succeeded",
+            result,
+            executionId,
+            toolsUsed: toolsUsedThisPrompt,
+            guardianDecisions: guardianInterventionCount,
+          };
+        } catch (err) {
+          lastError = errorMessage(err);
+          const decision = classifyRetry(err, attempt);
+          const isGuardianLoop = err instanceof GuardianLoopError;
+          const executorErrCode = err instanceof ExecutorError ? err.code : null;
+          const errCode = buildErrorCode({
+            isGuardianLoop,
+            classified: decision.classified,
+            executorErrCode,
+          });
+          lastErrorCode = errCode;
+
+          const errWithRaw = err as Error & { stderrRaw?: string; stdoutRaw?: string };
+          const rawDiag = errWithRaw.stderrRaw || errWithRaw.stdoutRaw;
+          await updatePromptExecution(executionId, "failed", null, "", this.db, {
+            code: errCode,
+            message: lastError,
+            raw: rawDiag,
+          });
+
+          const willRetry = decision.retry && attempt < maxAttempts;
+
+          if (decision.classified?.category === "rate_limit") {
+            await this.emit({
+              type: "prompt.rate_limited",
+              promptId: prompt.id,
+              waitMs: decision.waitMs,
+              attempt,
+            });
+          }
+
+          await this.emit({
+            type: "prompt.failed",
+            promptId: prompt.id,
+            error: lastError,
+            willRetry,
+          });
+
+          if (willRetry) {
+            await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
+            if (this.pauseController.isCancelled()) {
+              return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
+            }
+            attempt++;
+            continue;
+          }
+          break;
+        }
+      } finally {
+        heartbeat.stop();
+      }
+    }
+
+    return {
+      kind: "failed",
+      error: lastError ?? "unknown error",
+      errorCode: lastErrorCode,
     };
   }
 }

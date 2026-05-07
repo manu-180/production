@@ -812,3 +812,251 @@ describe("Orchestrator — retries default and backoff", () => {
     setTimeoutSpy.mockRestore();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parallel waves
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds a prompt that belongs to an explicit wave. Lets parallel-wave tests
+ * group prompts together (`makePrompt` defaults each to its own wave so the
+ * legacy sequential tests are unaffected).
+ */
+function makePromptInWave(
+  id: string,
+  order: number,
+  wave: number,
+  extra?: Partial<PromptDefinition["frontmatter"]>,
+): PromptDefinition {
+  return {
+    id,
+    order,
+    wave,
+    filename: `${id}.md`,
+    content: `Prompt body ${id}`,
+    frontmatter: {
+      retries: 0,
+      ...(extra ?? {}),
+    },
+  };
+}
+
+describe("Orchestrator — parallel waves", () => {
+  it("runs prompts in same wave concurrently (total ≈ max delay, not sum)", async () => {
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1),
+      makePromptInWave("p2", 1, 1),
+      makePromptInWave("p3", 2, 1),
+    ]);
+    // Delays: 100ms, 50ms, 30ms. Sequential = 180ms; parallel ≈ 100ms.
+    claudeProcessMock.waitImpls = [
+      async () => {
+        await new Promise((r) => setTimeout(r, 100));
+        return defaultSuccessResult();
+      },
+      async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        return defaultSuccessResult();
+      },
+      async () => {
+        await new Promise((r) => setTimeout(r, 30));
+        return defaultSuccessResult();
+      },
+    ];
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-parallel-timing",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+    });
+
+    const t0 = Date.now();
+    const result = await orchestrator.run();
+    const elapsed = Date.now() - t0;
+
+    expect(result.status).toBe("completed");
+    expect(result.completedPrompts).toBe(3);
+    // Generous bound: must be much closer to max(100) than to sum(180).
+    // Allow 160ms ceiling to absorb event-loop / DB-mock overhead in CI.
+    expect(elapsed).toBeLessThan(160);
+  });
+
+  it("commits a single checkpoint per parallel wave", async () => {
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1),
+      makePromptInWave("p2", 1, 1),
+      makePromptInWave("p3", 2, 1),
+    ]);
+    const commitSpy = vi.fn().mockResolvedValue("sha-wave-1");
+    const rollbackSpy = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-parallel-checkpoint",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+      checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("completed");
+    expect(commitSpy).toHaveBeenCalledTimes(1);
+    // The wave's commit is attributed to the first prompt's id.
+    expect(commitSpy.mock.calls[0]?.[0]).toBe("p1");
+  });
+
+  it("respects concurrency cap of 3 with a wave of 5 prompts", async () => {
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1),
+      makePromptInWave("p2", 1, 1),
+      makePromptInWave("p3", 2, 1),
+      makePromptInWave("p4", 3, 1),
+      makePromptInWave("p5", 4, 1),
+    ]);
+    // The orchestrator calls `proc.wait()` twice per prompt (the primary race
+    // and a watchdog inside `cancelPromise`), so we dedupe by slot index — we
+    // care about how many DISTINCT prompts are running concurrently, not how
+    // many wait() invocations are alive.
+    const active = new Set<number>();
+    let peak = 0;
+    const makeImpl = (slot: number) => async () => {
+      active.add(slot);
+      peak = Math.max(peak, active.size);
+      await new Promise((r) => setTimeout(r, 25));
+      active.delete(slot);
+      return defaultSuccessResult();
+    };
+    claudeProcessMock.waitImpls = [makeImpl(0), makeImpl(1), makeImpl(2), makeImpl(3), makeImpl(4)];
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-cap-3",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("completed");
+    expect(claudeProcessMock.instances.length).toBe(5);
+    expect(peak).toBeLessThanOrEqual(3);
+    // Sanity: with 5 prompts and a cap of 3, we must have actually exercised
+    // the cap (otherwise the test isn't proving anything).
+    expect(peak).toBeGreaterThanOrEqual(2);
+  });
+
+  it("wave fails if any prompt fails after retries; siblings still complete", async () => {
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1),
+      makePromptInWave("p2", 1, 1),
+      makePromptInWave("p3", 2, 1),
+    ]);
+    let p2Started = false;
+    let p2Finished = false;
+    let p3Started = false;
+    let p3Finished = false;
+    claudeProcessMock.waitImpls = [
+      // p1 fails immediately (retries=0 → terminal).
+      async () => defaultErrorResult(),
+      // p2 completes successfully.
+      async () => {
+        p2Started = true;
+        await new Promise((r) => setTimeout(r, 30));
+        p2Finished = true;
+        return defaultSuccessResult();
+      },
+      // p3 completes successfully.
+      async () => {
+        p3Started = true;
+        await new Promise((r) => setTimeout(r, 30));
+        p3Finished = true;
+        return defaultSuccessResult();
+      },
+    ];
+
+    const commitSpy = vi.fn().mockResolvedValue("sha-x");
+    const rollbackSpy = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-parallel-fail",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+      checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("failed");
+    expect(result.failedPromptId).toBe("p1");
+    // Siblings DID complete (allSettled behavior).
+    expect(p2Started).toBe(true);
+    expect(p2Finished).toBe(true);
+    expect(p3Started).toBe(true);
+    expect(p3Finished).toBe(true);
+    // No checkpoint commit on a failed wave.
+    expect(commitSpy).not.toHaveBeenCalled();
+  });
+
+  it("disables continueSession with a warning in parallel waves", async () => {
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1, { continueSession: true }),
+      makePromptInWave("p2", 1, 1, { continueSession: true }),
+    ]);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-parallel-cs",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("completed");
+    const ClaudeProcessMocked = vi.mocked(ClaudeProcess);
+    // Neither sibling should carry resumeSessionId despite continueSession:true.
+    for (const call of ClaudeProcessMocked.mock.calls) {
+      expect((call[0] as { resumeSessionId?: string }).resumeSessionId).toBeUndefined();
+    }
+    expect(warnSpy).toHaveBeenCalled();
+    expect(
+      warnSpy.mock.calls.some((args) => String(args[0] ?? "").includes("continueSession")),
+    ).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it("single-prompt waves preserve existing behavior (sequential, one checkpoint per prompt)", async () => {
+    // Three prompts, each in its OWN wave → sequential single-prompt waves.
+    const plan = makePlan([
+      makePromptInWave("p1", 0, 1),
+      makePromptInWave("p2", 1, 2),
+      makePromptInWave("p3", 2, 3),
+    ]);
+    const commitSpy = vi.fn().mockResolvedValue("sha-each");
+    const rollbackSpy = vi.fn().mockResolvedValue(undefined);
+
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-single-waves",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+      checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("completed");
+    expect(commitSpy).toHaveBeenCalledTimes(3);
+    expect(commitSpy.mock.calls.map((c) => c[0])).toEqual(["p1", "p2", "p3"]);
+  });
+});
