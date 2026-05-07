@@ -60,25 +60,40 @@ function deriveTitleFromFilename(filename: string): string {
 }
 
 /**
- * Extract the wave number from a filename's numeric prefix.
+ * Extract the wave number from a filename's prefix.
  *
- * The convention is: a leading run of digits identifies the wave; an optional
- * single lowercase letter that follows the digits marks the file as a
- * parallel sibling of the same wave; the digits/letter must be terminated by
- * a hyphen or underscore before the rest of the filename.
+ * The convention is permissive on purpose — humans use whatever shorthand
+ * fits their language (`01-`, `T1-` for "tanda", `W1-` for "wave",
+ * `wave3-`, `v2-`, etc.). We accept ANY leading run of letters as a
+ * decorative prefix, then a run of digits (the wave), then an optional
+ * single trailing letter that identifies parallel siblings of the same
+ * wave, then a hyphen or underscore that terminates the prefix.
  *
- * Examples:
- *   "03a-foo.md"   → 3
- *   "03b-bar.md"   → 3   (parallel sibling of 03a)
- *   "10-only.md"   → 10
- *   "001_x.md"     → 1
- *   "intro.md"     → undefined (no numeric prefix)
- *   "v2-hotfix.md" → undefined (prefix is not purely numeric)
+ * Examples (case-insensitive):
+ *   "01-foo.md"      → 1
+ *   "01a-foo.md"     → 1
+ *   "03a-foo.md"     → 3
+ *   "03b-bar.md"     → 3   (parallel sibling of 03a)
+ *   "T1-foo.md"      → 1   ("tanda 1" — Spanish for wave)
+ *   "T1a-foo.md"     → 1
+ *   "T2-bar.md"      → 2
+ *   "W1-foo.md"      → 1
+ *   "wave3-foo.md"   → 3
+ *   "v2-hotfix.md"   → 2
+ *   "10_foo.md"      → 10
+ *   "001-foo.md"     → 1
+ *   "intro.md"       → undefined (no numeric segment in prefix)
+ *   "foo.md"         → undefined
  */
 function deriveWaveFromFilename(filename: string): number | undefined {
   // Drop directory portion if any was passed by mistake.
   const base = filename.replace(/^.*[\\/]/, "");
-  const m = base.match(/^(\d+)[a-z]?[-_]/);
+  // `^[a-z]*` — optional decorative letters (T, W, wave, v, …).
+  // `(\d+)`   — the wave number.
+  // `[a-z]?`  — optional sibling letter (a, b, c, …).
+  // `[-_]`    — required separator before the rest of the filename.
+  // Case-insensitive so "T1-", "t1-", "Wave1-", "WAVE1-" all work.
+  const m = base.match(/^[a-z]*(\d+)[a-z]?[-_]/i);
   if (!m || m[1] === undefined) return undefined;
   // Number.parseInt with radix 10 — leading zeros are tolerated and dropped.
   const n = Number.parseInt(m[1], 10);

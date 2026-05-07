@@ -148,14 +148,49 @@ Body
       expect(parsed.frontmatter.wave).toBe(10);
     });
 
-    it("returns undefined wave when filename has no numeric prefix", () => {
+    it("returns undefined wave when filename has no numeric segment in prefix", () => {
       const parsed = parsePromptFile("intro.md", "body");
       expect(parsed.frontmatter.wave).toBeUndefined();
     });
 
-    it("returns undefined wave when prefix is not purely numeric ('v2-foo.md')", () => {
-      const parsed = parsePromptFile("v2-foo.md", "body");
-      expect(parsed.frontmatter.wave).toBeUndefined();
+    it("recognizes 'T1-foo.md' (Spanish 'tanda') → wave 1", () => {
+      const parsed = parsePromptFile("T1-mobile-drawer.md", "body");
+      expect(parsed.frontmatter.wave).toBe(1);
+    });
+
+    it("recognizes 'T1a-foo.md' as wave 1 with sibling letter", () => {
+      const parsed = parsePromptFile("T1a-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(1);
+    });
+
+    it("groups 'T2-x.md' and 'T2-y.md' into the same wave (2)", () => {
+      const a = parsePromptFile("T2-home-remove-section.md", "body");
+      const b = parsePromptFile("T2-navbar-integrate.md", "body");
+      expect(a.frontmatter.wave).toBe(2);
+      expect(b.frontmatter.wave).toBe(2);
+    });
+
+    it("recognizes 'W1-foo.md' (W = wave) → wave 1", () => {
+      const parsed = parsePromptFile("W1-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(1);
+    });
+
+    it("recognizes 'wave3-foo.md' (full word) → wave 3", () => {
+      const parsed = parsePromptFile("wave3-foo.md", "body");
+      expect(parsed.frontmatter.wave).toBe(3);
+    });
+
+    it("is case-insensitive ('t1-', 't1-', 'WAVE2-' all work)", () => {
+      expect(parsePromptFile("t1-foo.md", "body").frontmatter.wave).toBe(1);
+      expect(parsePromptFile("WAVE2-foo.md", "body").frontmatter.wave).toBe(2);
+    });
+
+    it("recognizes 'v2-foo.md' as wave 2 (any letter prefix is permissive)", () => {
+      // Note: the regex is intentionally lax — any leading letters before
+      // the digits are treated as decorative. Authors who want a literal
+      // 'v2' to NOT be a wave should set `wave:` explicitly in frontmatter.
+      const parsed = parsePromptFile("v2-hotfix.md", "body");
+      expect(parsed.frontmatter.wave).toBe(2);
     });
 
     it("frontmatter wave overrides filename-derived wave", () => {
