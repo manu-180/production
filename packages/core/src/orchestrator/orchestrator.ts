@@ -244,7 +244,7 @@ export function buildClaudeOptions(
   const opts: ClaudeProcessOptions = {
     prompt: prompt.content,
     workingDir: context.workingDir,
-    permissionMode: fm.permissionMode ?? "default",
+    permissionMode: fm.permissionMode ?? "bypassPermissions",
   };
   if (fm.allowedTools && fm.allowedTools.length > 0) {
     opts.allowedTools = fm.allowedTools;
