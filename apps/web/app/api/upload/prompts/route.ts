@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 /** Per-file caps. Tuned for prompt-sized markdown — bump when needed. */
 const MAX_MD_BYTES = 1_000_000; // 1 MB
 const MAX_ZIP_BYTES = 10_000_000; // 10 MB
-const MAX_TOTAL_PROMPTS = 500;
+const MAX_TOTAL_PROMPTS = 1000;
 
 interface ProcessedPrompt {
   /** Source filename from the upload. Carries through to PromptInput.filename. */

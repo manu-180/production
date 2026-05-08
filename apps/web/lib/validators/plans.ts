@@ -21,7 +21,7 @@ export const planCreateSchema = z.object({
   is_template: z.boolean().optional(),
   default_working_dir: z.string().trim().max(2000).optional(),
   default_settings: z.record(z.string(), z.unknown()).optional(),
-  prompts: z.array(promptInputSchema).max(500).optional(),
+  prompts: z.array(promptInputSchema).max(1000).optional(),
 });
 export type PlanCreate = z.infer<typeof planCreateSchema>;
 
@@ -60,6 +60,6 @@ export const promptUpdateSchema = z
 export type PromptUpdate = z.infer<typeof promptUpdateSchema>;
 
 export const promptReorderSchema = z.object({
-  ordered: z.array(z.string().uuid()).min(1).max(500),
+  ordered: z.array(z.string().uuid()).min(1).max(1000),
 });
 export type PromptReorder = z.infer<typeof promptReorderSchema>;
