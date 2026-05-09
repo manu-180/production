@@ -15,6 +15,7 @@
  * orchestrator's cancel path, which kills the in-flight Claude process.
  */
 
+import { existsSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +81,26 @@ interface QueuedRunRow {
 }
 
 /**
+ * Returns true when this worker can actually execute the given run — i.e.
+ * its `working_dir` exists on this host's filesystem and is a directory.
+ *
+ * In a multi-machine setup (the same Supabase project shared between, say,
+ * a desktop and a laptop) every worker subscribes to the same queue but
+ * each only has access to a subset of the user's project folders. Without
+ * this guard, the wrong worker can win the claim race and then hang in
+ * `RepoInitializer` trying to `git status` a path that doesn't exist —
+ * leaving the run zombie with `started_at = null`.
+ */
+function workerCanHandle(workingDir: string): boolean {
+  try {
+    if (!existsSync(workingDir)) return false;
+    return statSync(workingDir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Look for one queued run, atomically claim it, and start a handler.
  *
  * Claiming is done as a `WHERE status='queued'` conditional UPDATE — if two
@@ -87,6 +108,10 @@ interface QueuedRunRow {
  * loser silently moves on. This is good enough for the polling backend; a
  * proper `SELECT FOR UPDATE SKIP LOCKED` lands when we cut over to a Postgres
  * connection.
+ *
+ * Multi-host filtering: we pull a small batch of candidates (oldest first)
+ * and pick the first one whose `working_dir` exists on this host. Anything
+ * we skip stays `queued` for whichever worker can satisfy the path.
  */
 async function checkForQueuedRuns(): Promise<void> {
   if (shuttingDown) return;
@@ -98,7 +123,8 @@ async function checkForQueuedRuns(): Promise<void> {
     .from("runs")
     .select("id, plan_id, working_dir")
     .eq("status", "queued")
-    .limit(1);
+    .order("created_at", { ascending: true })
+    .limit(10);
 
   if (selectError !== null) {
     logger.error({ err: selectError }, "failed to query queued runs");
@@ -106,8 +132,16 @@ async function checkForQueuedRuns(): Promise<void> {
   }
 
   const rows = (runs ?? []) as QueuedRunRow[];
-  const run = rows[0];
-  if (run === undefined) return;
+  if (rows.length === 0) return;
+
+  const run = rows.find((r) => workerCanHandle(r.working_dir));
+  if (run === undefined) {
+    logger.debug(
+      { host: hostname(), skipped: rows.length },
+      "queued runs exist but none match this host's filesystem — leaving them for another worker",
+    );
+    return;
+  }
 
   // Atomic claim. The second `.eq('status', 'queued')` is the CAS guard:
   // if another worker already flipped it, our update affects zero rows and
