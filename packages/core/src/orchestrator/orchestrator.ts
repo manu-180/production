@@ -1213,7 +1213,7 @@ export class Orchestrator {
               if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
                 claudeOpts.resumeSessionId = nextResumeSessionId;
               }
-            } else if (this.guardian) {
+            } else if (this.guardian && prompt.frontmatter.guardian !== false) {
               const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
               claudeOpts.prompt = injection.prompt;
             }
@@ -1283,7 +1283,7 @@ export class Orchestrator {
 
             addUsage(context, mapTokenUsage(result.usage), result.costUsd);
 
-            if (this.guardian) {
+            if (this.guardian && prompt.frontmatter.guardian !== false) {
               const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
               const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
               const promptContext = buildPromptContext(prompt);

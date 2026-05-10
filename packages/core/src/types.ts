@@ -39,6 +39,7 @@ export interface PromptDefinition {
 
 export interface PromptFrontmatter {
   title?: string;
+  guardian?: boolean;
   continueSession?: boolean;
   allowedTools?: string[];
   permissionMode?: "default" | "acceptEdits" | "bypassPermissions";

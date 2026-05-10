@@ -15,6 +15,15 @@ const PromptFrontmatterSchema = z.object({
   title: z.string().optional(),
 
   /**
+   * Whether the Guardian runs for this prompt. Defaults to `true`. Set to
+   * `false` for mechanical prompts (renames, simple component scaffolds,
+   * formatting passes) where the Guardian's detect+decide cycle per turn is
+   * pure overhead. The orchestrator skips guideline injection AND the
+   * post-turn intervention check when this is false.
+   */
+  guardian: z.boolean().default(true),
+
+  /**
    * Whether to resume the previous Claude session instead of starting fresh.
    * Defaults to `true` so sequential prompts in a plan reuse the previous
    * session's prompt cache and tool-call context (huge token savings for

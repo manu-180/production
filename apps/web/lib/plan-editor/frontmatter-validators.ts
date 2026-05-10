@@ -20,6 +20,7 @@ const permissionModeSchema = z.enum(["default", "acceptEdits", "bypassPermission
 
 export const promptFrontmatterSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
+  guardian: z.boolean().optional(),
   continueSession: z.boolean().optional(),
   allowedTools: z.array(allowedToolSchema).optional(),
   permissionMode: permissionModeSchema.optional(),
