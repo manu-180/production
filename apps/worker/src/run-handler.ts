@@ -31,6 +31,7 @@ import type { HealthMonitor } from "@conductor/core";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import type { Logger } from "pino";
 import { createHeartbeat } from "./heartbeat.js";
+import { RunControlChannel } from "./run-control-channel.js";
 
 export interface RunHandlerOptions {
   runId: string;
@@ -56,6 +57,7 @@ export class RunHandler {
   private orchestrator: Orchestrator | null = null;
   private running = false;
   private heartbeat: HealthMonitor | null = null;
+  private controlChannel: RunControlChannel | null = null;
 
   constructor(opts: RunHandlerOptions) {
     this._runId = opts.runId;
@@ -244,6 +246,42 @@ export class RunHandler {
         "starting orchestrator",
       );
 
+      // Bridge user-initiated pause/resume/cancel from the DB into the
+      // in-memory orchestrator. Started right before .run() so the channel
+      // is live for the entire execution window. Must be torn down in the
+      // finally below regardless of how the run terminates.
+      this.controlChannel = new RunControlChannel({
+        runId: this._runId,
+        supabaseUrl: this.supabaseUrl,
+        supabaseServiceKey: this.supabaseServiceKey,
+        logger: this.logger,
+        onPause: () => {
+          this.logger.info({ runId: this._runId }, "control: pause requested");
+          this.orchestrator?.pause();
+          void this.emitControlAck("worker.pause_ack").catch(() => {});
+        },
+        onResume: () => {
+          this.logger.info({ runId: this._runId }, "control: resume requested");
+          this.orchestrator?.resume();
+          void this.emitControlAck("worker.resume_ack").catch(() => {});
+        },
+        onCancel: (reason: string) => {
+          this.logger.info({ runId: this._runId, reason }, "control: cancel requested");
+          this.orchestrator?.cancel(reason);
+          void this.emitControlAck("worker.cancel_ack", { reason }).catch(() => {});
+        },
+      });
+      try {
+        await this.controlChannel.start();
+      } catch (err) {
+        // Realtime is best-effort. If subscribe throws we keep going —
+        // graceful shutdown still covers the worst case.
+        this.logger.warn(
+          { runId: this._runId, err },
+          "control channel failed to start; continuing without realtime",
+        );
+      }
+
       let result: RunResult | null = null;
       let orchestratorError: unknown = null;
       try {
@@ -298,6 +336,14 @@ export class RunHandler {
         );
       }
     } finally {
+      if (this.controlChannel !== null) {
+        try {
+          await this.controlChannel.stop();
+        } catch (err) {
+          this.logger.warn({ runId: this._runId, err }, "failed to stop control channel");
+        }
+        this.controlChannel = null;
+      }
       if (this.heartbeat !== null) {
         try {
           await this.heartbeat.stop();
@@ -308,6 +354,42 @@ export class RunHandler {
       }
       this.running = false;
       this.orchestrator = null;
+    }
+  }
+
+  /**
+   * Emit a `run_events` row acknowledging that the worker received and
+   * actioned a user-initiated control signal. Lets the UI surface the
+   * difference between "pause request sent" (DB status flipped) and
+   * "worker actually paused" (which only happens at the next wave
+   * boundary). Best-effort; failures are swallowed.
+   */
+  private async emitControlAck(
+    eventType: "worker.pause_ack" | "worker.resume_ack" | "worker.cancel_ack",
+    payload: Record<string, unknown> = {},
+  ): Promise<void> {
+    try {
+      const supabase = createClient(this.supabaseUrl, this.supabaseServiceKey);
+      // run_events.sequence is unique per run; allocate via the same RPC
+      // the API and orchestrator use so ordering is consistent.
+      const { data: seq, error: seqErr } = await supabase.rpc("next_event_sequence", {
+        p_run_id: this._runId,
+      });
+      if (seqErr !== null || typeof seq !== "number") {
+        this.logger.debug(
+          { runId: this._runId, eventType, err: seqErr },
+          "control ack: failed to allocate sequence",
+        );
+        return;
+      }
+      await supabase.from("run_events").insert({
+        run_id: this._runId,
+        sequence: seq,
+        event_type: eventType,
+        payload: { ...payload, observed_at: new Date().toISOString() } as never,
+      });
+    } catch (err) {
+      this.logger.debug({ runId: this._runId, eventType, err }, "control ack emit failed");
     }
   }
 
