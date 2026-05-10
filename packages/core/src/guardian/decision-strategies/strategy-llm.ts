@@ -2,8 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type Logger, createLogger } from "../../logger.js";
 import type { DecisionInput, DecisionResult, DecisionStrategy } from "../decision-engine.js";
 
-const DEFAULT_LLM_MODEL = "claude-sonnet-4-5";
-const FALLBACK_LLM_MODEL = "claude-3-5-sonnet-20241022";
+// Internal arbiter for guardian decisions. Haiku is ~12x cheaper than Sonnet
+// and the task (output a short JSON: decision/reasoning/confidence) is well
+// within its capability. Plan execution still uses whatever model the Claude
+// CLI is configured with — this only affects the guardian's last-resort
+// decision call. If a low-confidence answer comes back, the engine already
+// flags it for human review via the HUMAN_REVIEW_THRESHOLD check below.
+const DEFAULT_LLM_MODEL = "claude-haiku-4-5-20251001";
+const FALLBACK_LLM_MODEL = "claude-3-5-haiku-20241022";
 const LLM_TIMEOUT_MS = 15_000;
 const HUMAN_REVIEW_THRESHOLD = 0.7;
 
@@ -24,7 +30,7 @@ interface LlmJsonResponse {
 interface StrategyLlmConfig {
   /** Anthropic API key — overrides the per-call key from `DecisionInput`. */
   anthropicApiKey?: string;
-  /** Override the default model id (`claude-sonnet-4-5`). */
+  /** Override the default model id (`claude-haiku-4-5-20251001`). */
   llmModel?: string;
 }
 
