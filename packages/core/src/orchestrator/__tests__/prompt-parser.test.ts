@@ -35,7 +35,7 @@ title: Solo
 Body only.
 `;
     const parsed = parsePromptFile("foo.md", raw);
-    expect(parsed.frontmatter.continueSession).toBe(false);
+    expect(parsed.frontmatter.continueSession).toBe(true);
     expect(parsed.frontmatter.allowedTools).toEqual(["Edit", "Write", "Read", "Bash"]);
     expect(parsed.frontmatter.permissionMode).toBe("default");
     expect(parsed.frontmatter.maxTurns).toBe(50);
