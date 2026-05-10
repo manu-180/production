@@ -33,8 +33,13 @@ const PromptFrontmatterSchema = z.object({
     .enum(["default", "acceptEdits", "bypassPermissions"])
     .default("bypassPermissions"),
 
-  /** Maximum agent turns before the executor stops the prompt. */
-  maxTurns: z.number().int().positive().default(50),
+  /**
+   * Maximum agent turns before the executor stops the prompt. Default lowered
+   * to 20 (from 50) to discipline prompt size and cut tail-expensive runs that
+   * loop without converging. Prompts that genuinely need more should set it
+   * explicitly in their frontmatter.
+   */
+  maxTurns: z.number().int().positive().default(20),
 
   /** Optional hard cap on USD spend for this prompt. */
   maxBudgetUsd: z.number().positive().optional(),

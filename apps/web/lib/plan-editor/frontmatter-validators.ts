@@ -39,7 +39,7 @@ export const defaultFrontmatter: PromptFrontmatter = {
   continueSession: true,
   allowedTools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
   permissionMode: "bypassPermissions",
-  maxTurns: 50,
+  maxTurns: 20,
   requiresApproval: false,
   rollbackOnFail: false,
 };

@@ -38,7 +38,7 @@ Body only.
     expect(parsed.frontmatter.continueSession).toBe(true);
     expect(parsed.frontmatter.allowedTools).toEqual(["Edit", "Write", "Read", "Bash"]);
     expect(parsed.frontmatter.permissionMode).toBe("default");
-    expect(parsed.frontmatter.maxTurns).toBe(50);
+    expect(parsed.frontmatter.maxTurns).toBe(20);
     expect(parsed.frontmatter.timeoutMs).toBe(600_000);
     expect(parsed.frontmatter.retries).toBeUndefined();
     expect(parsed.frontmatter.requiresApproval).toBe(false);
