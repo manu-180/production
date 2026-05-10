@@ -30,17 +30,10 @@ interface LoadedGuidelines {
   customPath?: string;
 }
 
-const DEFAULT_GUIDELINES_BODY = `- NO hagas preguntas. Decidí siempre con criterio de buenas prácticas y escalabilidad.
-- Si encontrás ambigüedad, elegí la opción más mantenible y documentala como comentario en el código (// DECISION: ...).
-- Stack del proyecto (no proponer alternativas):
-  - Web: Next.js 15 + TypeScript strict + Tailwind + shadcn/ui
-  - Mobile: Flutter + Riverpod
-  - DB: Supabase (Postgres + RLS + Realtime + Storage)
-  - Tests: Vitest (unit) + Playwright (E2E)
-- Convenciones: kebab-case files, PascalCase components, camelCase utils
-- Preferí: composición > herencia, async/await > promises chained, tipos explícitos > inferencia agresiva
-- En caso de error: loggea con contexto, fail loud, no swallow
-- Trabajamos en \`main\` directo, sin branches.`;
+const DEFAULT_GUIDELINES_BODY = `- NO hagas preguntas. Decidí con criterio (mantenibilidad > cleverness).
+- Ambigüedad → opción más simple y documentá con // DECISION: ...
+- Stack, convenciones y reglas de git: ver CLAUDE.md del proyecto.
+- Fail loud, no swallow errors.`;
 
 const GUIDELINES_HEADER = "[GUARDIAN GUIDELINES]";
 const GUIDELINES_FOOTER = "[/GUARDIAN GUIDELINES]";
