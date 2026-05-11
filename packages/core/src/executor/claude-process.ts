@@ -96,7 +96,7 @@ export class ClaudeProcess extends EventEmitter {
     this.env = env;
     this.captureEvents = opts.captureEvents ?? true;
     this.maxQueue = opts.maxQueueSize ?? MAX_QUEUE_SIZE;
-    this.modelHint = opts.model ?? "claude-sonnet-4-7";
+    this.modelHint = opts.model ?? "claude-sonnet-4-6";
 
     const timeoutOpts: ConstructorParameters<typeof TimeoutManager>[0] = {
       timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,

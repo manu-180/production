@@ -57,8 +57,18 @@ export const PARALLEL_CONCURRENCY_CAP = 2;
  * the retry path can recover, rather than burning the run's wall-clock
  * budget on a stuck process. Honors any explicit per-prompt
  * `idleTimeoutMs` if it's already lower.
+ *
+ * Bumped from 45s → 120s after observing a real-world run (32 prompts,
+ * working-dir Windows, large prompts with heavy "context-to-read"
+ * frontmatter) where every parallel attempt failed at exactly 45s with
+ * zero output captured. Claude CLI cold-start on Windows routinely takes
+ * 20-40s when MCP servers are configured in the working dir; combined
+ * with two siblings spawning at roughly the same time, the first stdout
+ * line frequently lands past 45s. 120s is still well below the executor
+ * default's wall-clock cap (30 min) so genuinely hung processes are
+ * killed quickly — we just stop killing healthy-but-slow ones.
  */
-export const PARALLEL_IDLE_TIMEOUT_MS = 45_000;
+export const PARALLEL_IDLE_TIMEOUT_MS = 120_000;
 
 /**
  * Maximum stagger applied to a sibling's start in a parallel wave. Each
@@ -66,8 +76,14 @@ export const PARALLEL_IDLE_TIMEOUT_MS = 45_000;
  * spawning Claude — prevents two CLI processes from hitting the OAuth
  * refresh endpoint in the same millisecond on retry, which is what
  * triggers contention/hangs on Windows.
+ *
+ * Bumped from 1.5s → 5s so the second sibling lands clearly outside the
+ * first sibling's OAuth/MCP cold-start window. With the previous 1.5s
+ * cap, both processes still hit the auth refresh inside the same ~3s
+ * burst on a cold cache, which was the trigger for the all-IDLE failure
+ * mode this constant exists to prevent.
  */
-export const PARALLEL_STAGGER_MAX_MS = 1_500;
+export const PARALLEL_STAGGER_MAX_MS = 5_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase-stub interfaces (CheckpointManager: phase 08)

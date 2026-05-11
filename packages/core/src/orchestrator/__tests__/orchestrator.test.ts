@@ -904,6 +904,10 @@ describe("Orchestrator — parallel waves", () => {
       db: createMockDb(),
       pauseController: new PauseController(),
       checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+      // Disable stagger jitter (which can add up to PARALLEL_STAGGER_MAX_MS per
+      // sibling) so the test completes within vitest's 5s default timeout.
+      // This test cares about commit attribution, not timing.
+      parallelStaggerMaxMs: 0,
     });
 
     const result = await orchestrator.run();
@@ -1031,6 +1035,8 @@ describe("Orchestrator — parallel waves", () => {
       runId: "run-parallel-cs",
       db: createMockDb(),
       pauseController: new PauseController(),
+      // Disable stagger jitter to keep the test within vitest's 5s timeout.
+      parallelStaggerMaxMs: 0,
     });
 
     const result = await orchestrator.run();
