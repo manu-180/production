@@ -15,6 +15,7 @@
 import {
   ClaudeProcess,
   type ClaudeProcessOptions,
+  DEFAULT_IDLE_TIMEOUT_MS,
   type ExecutionResult,
   ExecutorError,
   type ExecutorErrorCode,
@@ -116,6 +117,14 @@ export interface CheckpointManager {
       guardianDecisions: number;
     },
   ): void;
+  /**
+   * Optional: discard any uncommitted changes the failed prompt may have
+   * left in the working tree, so they don't leak into the next prompt. The
+   * orchestrator calls this after a wave that ended entirely in failure
+   * (continue-on-failure path). Best-effort; errors are logged but never
+   * thrown.
+   */
+  discardDirty?(): Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,7 +187,19 @@ export interface RunResult {
   totalCostUsd: number;
   totalDurationMs: number;
   completedPrompts: number;
+  /**
+   * First prompt that failed terminally. Kept for backwards compatibility
+   * with callers that only need a single id; the full list is in
+   * {@link failedPromptIds}.
+   */
   failedPromptId?: string;
+  /**
+   * Every prompt id that exhausted retries during this run. Empty when
+   * {@link status} === "completed". Populated even when the run continued
+   * past failures (continue-on-failure mode is the default).
+   */
+  failedPromptIds?: string[];
+  /** First failure's error message (kept for BC; full list in `errors`). */
   error?: string;
 }
 
@@ -826,6 +847,9 @@ export class Orchestrator {
     await this.emit({ type: "run.started", runId: this.runId });
 
     let lastGoodSha = "";
+    const failedPromptIds: string[] = [];
+    let firstFailureError: string | undefined;
+    let firstFailureId: string | undefined;
 
     const waves = groupIntoWaves(sortedPrompts);
 
@@ -834,6 +858,7 @@ export class Orchestrator {
       totalCostUsd: context.accumulatedCostUsd,
       totalDurationMs: Date.now() - startTime,
       completedPrompts: context.currentPromptIndex,
+      ...(failedPromptIds.length > 0 ? { failedPromptIds: [...failedPromptIds] } : {}),
     });
 
     for (const wave of waves) {
@@ -964,55 +989,136 @@ export class Orchestrator {
         return cancelledResult();
       }
 
-      // ── Failure: terminate run; sibling successes already wrote their rows
-      const firstFailedIdx = outcomes.findIndex((o) => o.kind === "failed");
-      if (firstFailedIdx !== -1) {
-        const failedPrompt = activePrompts[firstFailedIdx];
-        const failedOutcome = outcomes[firstFailedIdx];
-        if (!failedPrompt || !failedOutcome || failedOutcome.kind !== "failed") {
-          // Defensive — should never trigger.
-          await updateRunStatus(this.runId, "failed", this.db);
-          await clearResumeState(this.db, this.runId);
-          return {
-            status: "failed",
-            totalCostUsd: context.accumulatedCostUsd,
-            totalDurationMs: Date.now() - startTime,
-            completedPrompts: context.currentPromptIndex,
-            error: "internal: failed outcome missing",
-          };
+      // ── Failure handling: continue-on-failure ─────────────────────────────
+      // A terminal failure (all retries exhausted) is recorded but does NOT
+      // abort the run — we want to attempt every prompt in the plan and let
+      // the user review which ones failed at the end. A wave with mixed
+      // outcomes (some succeeded, some failed) still commits the successes;
+      // failed siblings are tracked in `failedPromptIds`. This matches the
+      // operator workflow: "ejecutar todo el plan, no quedarse colgado".
+      //
+      // The only hard short-circuit is `rollbackOnFail: true` on a failed
+      // prompt — that frontmatter flag is an explicit user opt-in saying
+      // "this prompt is a gating step; if it fails, stop and roll back".
+      const failedIndices: number[] = [];
+      let hardStopPrompt: PromptDefinition | null = null;
+      let hardStopOutcome: Extract<PromptOutcome, { kind: "failed" }> | null = null;
+      for (let j = 0; j < outcomes.length; j++) {
+        const o = outcomes[j];
+        if (!o || o.kind !== "failed") continue;
+        failedIndices.push(j);
+        const p = activePrompts[j];
+        if (!p) continue;
+        failedPromptIds.push(p.id);
+        if (firstFailureId === undefined) {
+          firstFailureId = p.id;
+          firstFailureError = o.error;
         }
+        if (p.frontmatter.rollbackOnFail === true && hardStopPrompt === null) {
+          hardStopPrompt = p;
+          hardStopOutcome = o;
+        }
+      }
 
-        if (
-          failedPrompt.frontmatter.rollbackOnFail === true &&
-          this.checkpoint &&
-          lastGoodSha.length > 0
-        ) {
+      if (hardStopPrompt !== null && hardStopOutcome !== null) {
+        // Hard stop requested by the prompt itself. Roll back to the last
+        // good checkpoint (if any), then terminate the run.
+        if (this.checkpoint && lastGoodSha.length > 0) {
           try {
             await this.checkpoint.rollback(lastGoodSha);
           } catch (rollbackErr) {
             console.error("[Orchestrator] rollback failed:", rollbackErr);
           }
         }
-
         await updateRunStatus(this.runId, "failed", this.db);
         await clearResumeState(this.db, this.runId);
         await this.emit({
           type: "run.failed",
-          failedAtPromptId: failedPrompt.id,
-          error: failedOutcome.error,
+          failedAtPromptId: hardStopPrompt.id,
+          error: hardStopOutcome.error,
         });
         return {
           status: "failed",
           totalCostUsd: context.accumulatedCostUsd,
           totalDurationMs: Date.now() - startTime,
           completedPrompts: context.currentPromptIndex,
-          failedPromptId: failedPrompt.id,
-          error: failedOutcome.error,
+          failedPromptId: hardStopPrompt.id,
+          failedPromptIds: [...failedPromptIds],
+          error: hardStopOutcome.error,
         };
       }
 
-      // ── All prompts in this wave succeeded ────────────────────────────────
-      // Cast: we've ruled out failed/cancelled above.
+      // If the wave was entirely failures (no successes to commit), emit
+      // prompt.failed for telemetry continuity, advance the index, and move
+      // on to the next wave. The orchestrator's per-attempt error reporting
+      // already wrote prompt_executions rows.
+      if (failedIndices.length === outcomes.length) {
+        for (let j = 0; j < activePrompts.length; j++) {
+          const p = activePrompts[j];
+          const o = outcomes[j];
+          if (!p || !o || o.kind !== "failed") continue;
+          await this.emit({
+            type: "prompt.failed",
+            promptId: p.id,
+            error: o.error,
+            willRetry: false,
+          });
+          context.currentPromptIndex++;
+        }
+        // Discard any uncommitted working-tree changes the failed prompt
+        // may have left behind so they don't leak into the next wave.
+        if (this.checkpoint && typeof this.checkpoint.discardDirty === "function") {
+          try {
+            await this.checkpoint.discardDirty();
+          } catch (discardErr) {
+            console.warn("[Orchestrator] discardDirty failed:", discardErr);
+          }
+        }
+        continue;
+      }
+
+      // ── Partial-success wave: filter to successes, then fall through ──────
+      // Some siblings failed, some succeeded. We commit the successes (so
+      // their work isn't lost) and emit prompt.failed for the failed ones.
+      // `activePrompts` / `activeIndices` / `outcomes` are rebuilt to contain
+      // only successful entries so the downstream checkpoint/bookkeeping
+      // logic doesn't see the failures.
+      if (failedIndices.length > 0) {
+        const failedSet = new Set(failedIndices);
+        const filteredPrompts: PromptDefinition[] = [];
+        const filteredIndices: number[] = [];
+        const filteredOutcomes: PromptOutcome[] = [];
+        for (let j = 0; j < outcomes.length; j++) {
+          const o = outcomes[j];
+          const p = activePrompts[j];
+          const idx = activeIndices[j];
+          if (!o || !p || idx === undefined) continue;
+          if (failedSet.has(j)) {
+            await this.emit({
+              type: "prompt.failed",
+              promptId: p.id,
+              error: o.kind === "failed" ? o.error : "unknown",
+              willRetry: false,
+            });
+            context.currentPromptIndex++;
+            continue;
+          }
+          filteredPrompts.push(p);
+          filteredIndices.push(idx);
+          filteredOutcomes.push(o);
+        }
+        // Rebind locals so the success branch below operates on the filtered
+        // set. (TS const-correctness: we shadow rather than reassign.)
+        activePrompts.length = 0;
+        activeIndices.length = 0;
+        activePrompts.push(...filteredPrompts);
+        activeIndices.push(...filteredIndices);
+        outcomes.length = 0;
+        outcomes.push(...filteredOutcomes);
+      }
+
+      // ── Wave's successful prompts (full success or filtered partial) ──────
+      // Cast: at this point every remaining outcome is `succeeded`.
       const successes = outcomes as Array<Extract<PromptOutcome, { kind: "succeeded" }>>;
 
       // Feed execution metadata for each prompt before committing the (single)
@@ -1093,8 +1199,33 @@ export class Orchestrator {
       }
     }
 
-    // All waves completed.
+    // All waves attempted. Branch on whether any prompt ultimately failed.
     const totalDurationMs = Date.now() - startTime;
+    if (failedPromptIds.length > 0) {
+      // Some prompts exhausted retries — the run is reported as failed but
+      // every wave got its chance. We surface the first failure for the
+      // legacy `run.failed` event and stash the full list in the result.
+      await updateRunStatus(this.runId, "failed", this.db);
+      await clearResumeState(this.db, this.runId);
+      const failedAtPromptId = firstFailureId ?? failedPromptIds[0] ?? "";
+      const errorMsg =
+        firstFailureError ?? `${failedPromptIds.length} prompt(s) failed after exhausting retries`;
+      await this.emit({
+        type: "run.failed",
+        failedAtPromptId,
+        error: errorMsg,
+      });
+      return {
+        status: "failed",
+        totalCostUsd: context.accumulatedCostUsd,
+        totalDurationMs,
+        completedPrompts: sortedPrompts.length - failedPromptIds.length,
+        failedPromptId: failedAtPromptId,
+        failedPromptIds: [...failedPromptIds],
+        error: errorMsg,
+      };
+    }
+
     await updateRunStatus(this.runId, "completed", this.db);
     await clearResumeState(this.db, this.runId);
     await this.emit({
@@ -1220,6 +1351,23 @@ export class Orchestrator {
                 (typeof explicit !== "number" || explicit > this.parallelIdleTimeoutMs)
               ) {
                 claudeOpts.idleTimeoutMs = this.parallelIdleTimeoutMs;
+              }
+            }
+
+            // Retry escalation: a prompt that failed the previous attempt
+            // gets a more generous idle timeout on the next try, on the
+            // theory that the previous failure was caused by slow stdout
+            // rather than a genuine hang. Multiplier grows with attempt:
+            // 1.5x on attempt 2, 2.25x on attempt 3, capped at 10 minutes.
+            // No-op for attempt 1.
+            if (attempt > 1) {
+              const idleBase = claudeOpts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+              const escalated = Math.min(
+                Math.floor(idleBase * 1.5 ** (attempt - 1)),
+                10 * 60 * 1000,
+              );
+              if (escalated > idleBase) {
+                claudeOpts.idleTimeoutMs = escalated;
               }
             }
 

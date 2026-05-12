@@ -217,6 +217,29 @@ export class CheckpointManager {
   }
 
   /**
+   * Discards any uncommitted changes the working tree currently holds. Used
+   * by the orchestrator after a wave that failed entirely, so the next
+   * prompt starts from a clean tree (matching the last successful commit)
+   * rather than inheriting partial edits from the failed attempt.
+   *
+   * Implementation: `git checkout -- .` — restores tracked files only.
+   * Untracked files are intentionally preserved so a user's in-progress
+   * scratch work isn't deleted.
+   */
+  async discardDirty(): Promise<void> {
+    if (this.finished) return;
+    if (!this.initialized) return;
+    try {
+      await this.gitManager.restoreWorkingTree();
+    } catch (err) {
+      throw new CheckpointManagerError(
+        "DISCARD_DIRTY_FAILED",
+        `git checkout -- . failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Rolls back the working tree to a given SHA that must be in the known
    * checkpoint history of this run. Removes stale checkpoint entries that
    * come after the target SHA.
