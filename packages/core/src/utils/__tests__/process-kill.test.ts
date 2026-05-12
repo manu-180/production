@@ -28,8 +28,13 @@ const mockedLogger = vi.mocked(logger);
 // {stdout, stderr} object so destructuring `const { stdout } = await ...` works.
 function mockExecFileSuccess(stdout: string) {
   mockedExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
+    // See note above — promisify shape differs from raw execFile callback
+    // (different arity), so cast via `unknown` to bypass the overlap check.
     (
-      callback as (err: ExecFileException | null, value: { stdout: string; stderr: string }) => void
+      callback as unknown as (
+        err: ExecFileException | null,
+        value: { stdout: string; stderr: string },
+      ) => void
     )(null, { stdout, stderr: "" });
     return {} as ReturnType<typeof execFile>;
   });
@@ -40,7 +45,10 @@ function mockExecFileError(message: string) {
   mockedExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
     const err = new Error(message) as ExecFileException;
     (
-      callback as (err: ExecFileException | null, value: { stdout: string; stderr: string }) => void
+      callback as unknown as (
+        err: ExecFileException | null,
+        value: { stdout: string; stderr: string },
+      ) => void
     )(err, { stdout: "", stderr: "" });
     return {} as ReturnType<typeof execFile>;
   });
@@ -99,7 +107,7 @@ describe("killProcessTreeWindowsVerified", () => {
   function queueSuccess(stdout: string) {
     mockedExecFile.mockImplementationOnce((_cmd, _args, _opts, callback) => {
       (
-        callback as (
+        callback as unknown as (
           err: ExecFileException | null,
           value: { stdout: string; stderr: string },
         ) => void
@@ -111,7 +119,7 @@ describe("killProcessTreeWindowsVerified", () => {
     mockedExecFile.mockImplementationOnce((_cmd, _args, _opts, callback) => {
       const err = new Error(message) as ExecFileException;
       (
-        callback as (
+        callback as unknown as (
           err: ExecFileException | null,
           value: { stdout: string; stderr: string },
         ) => void

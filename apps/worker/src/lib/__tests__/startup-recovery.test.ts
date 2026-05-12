@@ -9,15 +9,17 @@ function makeSupabaseMock(
   promptExecutionsResult: { data: unknown; error: unknown },
   runsResult: { data: unknown; error: unknown },
 ) {
-  // Runs chain: .from('runs').update({status:'failed'}).eq('id', runId).eq('status','running')
+  // Runs chain: .from('runs').update({status:'paused', ...}).eq('id', runId).eq('status','running')
   const runEq2 = vi.fn().mockResolvedValue(runsResult);
   const runEq1 = vi.fn().mockReturnValue({ eq: runEq2 });
   const runUpdate = vi.fn().mockReturnValue({ eq: runEq1 });
 
-  // prompt_executions chain:
-  // .from('prompt_executions').update({...}).eq('status','running').lt('last_progress_at', cutoff).select('id, run_id')
+  // prompt_executions chain. When excludeRunIds is empty:
+  //   .from('prompt_executions').update({...}).eq('status','running').lt('last_progress_at', cutoff).select('id, run_id')
+  // When excludeRunIds is non-empty, an extra .not('run_id','in', ...) is inserted before .select().
   const peSelect = vi.fn().mockResolvedValue(promptExecutionsResult);
-  const peLt = vi.fn().mockReturnValue({ select: peSelect });
+  const peNot = vi.fn().mockReturnValue({ select: peSelect });
+  const peLt = vi.fn().mockReturnValue({ select: peSelect, not: peNot });
   const peEq = vi.fn().mockReturnValue({ lt: peLt });
   const peUpdate = vi.fn().mockReturnValue({ eq: peEq });
 
@@ -32,6 +34,7 @@ function makeSupabaseMock(
     peUpdate,
     peEq,
     peLt,
+    peNot,
     peSelect,
     runUpdate,
     runEq1,
@@ -54,7 +57,7 @@ describe("reapStalePromptExecutions", () => {
     vi.clearAllMocks();
   });
 
-  it("reaps stale executions and marks the parent run as failed", async () => {
+  it("reaps stale executions and marks the parent run as paused (resumable)", async () => {
     const { supabase, peUpdate, runUpdate, runEq1 } = makeSupabaseMock(
       { data: [{ id: "pe-1", run_id: "r-1" }], error: null },
       { data: null, error: null },
@@ -73,14 +76,22 @@ describe("reapStalePromptExecutions", () => {
       }),
     );
 
-    // runs.update called for the affected run_id (includes finished_at).
-    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
+    // runs.update flips the parent to `paused` with the recovery reason so
+    // the user can resume the run rather than losing all progress to a
+    // terminal `failed` status.
+    expect(runUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "paused",
+        cancellation_reason: "worker_crash_recovery",
+        finished_at: null,
+      }),
+    );
 
     // The first .eq on the runs chain should use the stale run's id.
     expect(runEq1).toHaveBeenCalledWith("id", "r-1");
   });
 
-  it("marks parent run as failed only once when multiple stale executions share the same run_id", async () => {
+  it("marks parent run as paused only once when multiple stale executions share the same run_id", async () => {
     const { supabase, runUpdate } = makeSupabaseMock(
       {
         data: [
@@ -99,7 +110,20 @@ describe("reapStalePromptExecutions", () => {
 
     // Deduplication via Set → runs.update called exactly once for r-1.
     expect(runUpdate).toHaveBeenCalledTimes(1);
-    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
+    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "paused" }));
+  });
+
+  it("filters out excluded run IDs via .not('run_id','in', ...)", async () => {
+    const { supabase, peNot } = makeSupabaseMock(
+      { data: [], error: null },
+      { data: null, error: null },
+    );
+
+    await reapStalePromptExecutions(supabase as never, mockLogger as never, {
+      excludeRunIds: new Set(["r-active-1", "r-active-2"]),
+    });
+
+    expect(peNot).toHaveBeenCalledWith("run_id", "in", "(r-active-1,r-active-2)");
   });
 
   it("returns 0 and logs error when the DB update fails", async () => {

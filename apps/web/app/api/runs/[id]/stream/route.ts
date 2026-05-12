@@ -5,6 +5,7 @@ import { assertRunOwned } from "@/lib/api/run-utils";
 import { TRACE_ID_HEADER, resolveTraceId } from "@/lib/api/trace";
 import type { ServiceClient } from "@conductor/db";
 import type { NextRequest } from "next/server";
+import { formatSseEvent } from "./format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -229,13 +230,4 @@ function buildEventStream(opts: StreamOptions): ReadableStream<Uint8Array> {
       if (lifetimeTimer !== null) clearTimeout(lifetimeTimer);
     },
   });
-}
-
-/**
- * Format a single SSE message. Exported for unit testing — the polling loop
- * itself is too time-sensitive to test reliably, but the formatter is pure.
- */
-export function formatSseEvent(event: string, data: unknown): string {
-  const json = JSON.stringify(data);
-  return `event: ${event}\ndata: ${json}\n\n`;
 }

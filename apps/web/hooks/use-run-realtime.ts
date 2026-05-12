@@ -1,15 +1,18 @@
 "use client";
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
 import { qk } from "@/lib/react-query/keys";
 import { channels } from "@/lib/realtime/channels";
 import { getBrowserSupabase } from "@/lib/realtime/client";
 import { publishRunEvent } from "@/lib/realtime/event-bus";
 import {
-  applyEvent,
   type RealtimeEvent,
   type RunDetailCache,
+  applyEvent,
+  applyExecutionRow,
+  applyRunRow,
 } from "@/lib/realtime/event-handlers";
+import type { PromptExecution, Run } from "@conductor/db";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Subscribes to `run_events` filtered by `run_id`, applies events to the
@@ -33,16 +36,13 @@ export function useRunRealtime(runId: string): { isLive: boolean } {
       if (batch.length === 0) return;
       queueRef.current = [];
 
-      qc.setQueryData<RunDetailCache | undefined>(
-        qk.runs.detail(runId),
-        (prev) => {
-          if (prev === undefined) return prev;
-          let next = prev;
-          batch.sort((a, b) => a.sequence - b.sequence);
-          for (const ev of batch) next = applyEvent(next, ev);
-          return next;
-        },
-      );
+      qc.setQueryData<RunDetailCache | undefined>(qk.runs.detail(runId), (prev) => {
+        if (prev === undefined) return prev;
+        let next = prev;
+        batch.sort((a, b) => a.sequence - b.sequence);
+        for (const ev of batch) next = applyEvent(next, ev);
+        return next;
+      });
       for (const ev of batch) publishRunEvent(ev);
     };
 
@@ -54,7 +54,22 @@ export function useRunRealtime(runId: string): { isLive: boolean } {
       }
     };
 
-    const channel = supabase
+    // Direct table subscriptions: run_event payloads do not carry
+    // prompt_execution_id, so prompt-level status changes never make it into
+    // the cache via run_events alone. Mirroring the prompt_executions and
+    // runs rows directly keeps the UI in sync regardless of event metadata.
+    const patchExecution = (row: PromptExecution) => {
+      qc.setQueryData<RunDetailCache | undefined>(qk.runs.detail(runId), (prev) =>
+        prev === undefined ? prev : applyExecutionRow(prev, row),
+      );
+    };
+    const patchRun = (row: Partial<Run>) => {
+      qc.setQueryData<RunDetailCache | undefined>(qk.runs.detail(runId), (prev) =>
+        prev === undefined ? prev : applyRunRow(prev, row),
+      );
+    };
+
+    const eventsChannel = supabase
       .channel(channels.runEvents(runId))
       .on(
         "postgres_changes",
@@ -81,13 +96,39 @@ export function useRunRealtime(runId: string): { isLive: boolean } {
           });
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "prompt_executions",
+          filter: `run_id=eq.${runId}`,
+        },
+        (msg) => {
+          const row = (msg.new ?? msg.old) as PromptExecution | null;
+          if (row?.id) patchExecution(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "runs",
+          filter: `id=eq.${runId}`,
+        },
+        (msg) => {
+          const row = msg.new as Partial<Run> | null;
+          if (row) patchRun(row);
+        },
+      )
       .subscribe((status) => {
         setIsLive(status === "SUBSCRIBED");
       });
 
     return () => {
       setIsLive(false);
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(eventsChannel);
     };
   }, [runId, qc]);
 

@@ -27,8 +27,15 @@ export const systemInitEventSchema = z
     subtype: z.literal("init"),
     session_id: z.string(),
     tools: z.array(z.string()).default([]),
-    cwd: z.string(),
-    model: z.string(),
+    // `cwd` and `model` are optional — older / patched Claude CLI versions
+    // have been observed emitting `system.init` without them. We must NOT
+    // reject the event in that case; the whole stream would then be parsed
+    // as `parse_error` and the orchestrator would lose the session_id +
+    // model hint, making subsequent runs unreliable (silent successes,
+    // wrong cost math). Tolerating missing fields is forward/backward
+    // compatible — present fields are still validated as strings.
+    cwd: z.string().optional(),
+    model: z.string().optional(),
   })
   .passthrough();
 
@@ -91,9 +98,15 @@ export const resultEventSchema = z
   .object({
     type: z.literal("result"),
     subtype: z.string(),
-    duration_ms: z.number().nonnegative(),
+    // `duration_ms` and `usage` are optional — Claude CLI error subtypes
+    // (`error_max_turns`, `error_during_execution`, etc.) have been observed
+    // emitting `result` events without them. Marking required here would
+    // make the whole event parse-fail → orchestrator misses the error
+    // payload entirely → silent "success" with no captured result. Token
+    // usage falls back to assistant-event aggregation when missing.
+    duration_ms: z.number().nonnegative().optional(),
     total_cost_usd: z.number().nonnegative().optional(),
-    usage: tokenUsageSchema,
+    usage: tokenUsageSchema.optional(),
     result: z.string().optional(),
   })
   .passthrough();

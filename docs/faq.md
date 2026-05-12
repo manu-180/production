@@ -22,7 +22,10 @@ This is intentional. Conductor executes plans against a working directory — a 
 
 If you have multiple codebases and want to run plans on them simultaneously, you can run separate Conductor instances, each pointing to a different working directory and using its own Supabase project.
 
-Parallel execution within a single run (e.g. running independent prompt branches concurrently) is a potential future enhancement. The current sequential model keeps the system predictable and auditable.
+Parallel execution **within a single run** is supported: prompts that share a
+wave number run concurrently (capped at 2 sibling Claude processes by
+default). See the "Parallel waves" section in `docs/how-to/write-prompts.md`
+for the filename convention and frontmatter override.
 
 ---
 

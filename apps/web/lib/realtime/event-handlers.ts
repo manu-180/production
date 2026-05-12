@@ -45,10 +45,7 @@ export function applyEvent(prev: RunDetailCache, ev: RealtimeEvent): RunDetailCa
     ...patch,
     _lastAppliedSequence: ev.sequence,
   });
-  const patchExecution = (
-    id: string,
-    patch: Partial<PromptExecution>,
-  ): RunDetailCache => ({
+  const patchExecution = (id: string, patch: Partial<PromptExecution>): RunDetailCache => ({
     ...prev,
     executions: prev.executions.map((e) => (e.id === id ? { ...e, ...patch } : e)),
     _lastAppliedSequence: ev.sequence,
@@ -139,4 +136,44 @@ export function seedCache(
   apiResponse: Omit<RunDetailCache, "_lastAppliedSequence">,
 ): RunDetailCache {
   return { ...apiResponse, _lastAppliedSequence: -1 };
+}
+
+/**
+ * Merge a `prompt_executions` row delivered via realtime into the cache.
+ *
+ * Used as a fallback to {@link applyEvent} because run-event payloads do not
+ * carry `prompt_execution_id`, so prompt-level status updates were silently
+ * dropped from the React Query cache. Subscribing directly to the table keeps
+ * the UI in lockstep with DB state.
+ *
+ * - If the row already exists (matched by id), patch it in place — preserves
+ *   any joined `prompts` metadata seeded from the initial API fetch.
+ * - If new (a freshly inserted attempt), append it. The `prompts` join may be
+ *   missing on realtime payloads; we copy it from a sibling execution that
+ *   shares the same `prompt_id` when available so ordering still works.
+ */
+export function applyExecutionRow(prev: RunDetailCache, row: PromptExecution): RunDetailCache {
+  const existingIdx = prev.executions.findIndex((e) => e.id === row.id);
+  if (existingIdx !== -1) {
+    const existing = prev.executions[existingIdx];
+    if (!existing) return prev;
+    const next = prev.executions.slice();
+    next[existingIdx] = { ...existing, ...row, prompts: existing.prompts };
+    return { ...prev, executions: next };
+  }
+
+  const sibling = prev.executions.find((e) => e.prompt_id === row.prompt_id);
+  return {
+    ...prev,
+    executions: [...prev.executions, { ...row, prompts: sibling?.prompts ?? null }],
+  };
+}
+
+/**
+ * Merge a `runs` row delivered via realtime into the cache. Spreads scalar
+ * columns onto the top-level Run while preserving the joined `executions` and
+ * `plan` and the realtime sequence cursor.
+ */
+export function applyRunRow(prev: RunDetailCache, row: Partial<Run>): RunDetailCache {
+  return { ...prev, ...row };
 }

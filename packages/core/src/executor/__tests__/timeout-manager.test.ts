@@ -23,7 +23,11 @@ const mockedExecFile = vi.mocked(execFile);
 
 function mockExecFileSuccess() {
   mockedExecFile.mockImplementation((_cmd, _args, _opts, callback) => {
-    (callback as (err: null, value: { stdout: string; stderr: string }) => void)(null, {
+    // `execFile`'s real callback signature is `(err, stdout, stderr)`, but
+    // `promisify(execFile)` wraps it into `(err, { stdout, stderr })` — that's
+    // the shape the SUT awaits. Cast via `unknown` because the two signatures
+    // don't structurally overlap (different arity).
+    (callback as unknown as (err: null, value: { stdout: string; stderr: string }) => void)(null, {
       stdout: "",
       stderr: "",
     });

@@ -166,10 +166,14 @@ export class RunHandler {
         runInitDone = true;
 
         // Pre-populate prompt metadata for richer commit messages.
+        // `prompt.filename` is `string | null` since UI-created prompts have
+        // no source file. CheckpointManager expects a string (the commit
+        // message just renders "Prompt: <filename>"), so we fall back to the
+        // prompt id when filename is null.
         for (const prompt of plan.prompts) {
           checkpointManager.setPromptMeta(prompt.id, {
             title: prompt.frontmatter.title ?? prompt.id,
-            filename: prompt.filename,
+            filename: prompt.filename ?? prompt.id,
             order: prompt.order,
             total: plan.prompts.length,
           });
@@ -500,10 +504,21 @@ export class RunHandler {
    */
   private async markRunFailed(db: SupabaseClient, runId: string, reason: string): Promise<void> {
     try {
+      // CAS guard: only flip to `failed` if the row is still `running`.
+      // Without this, a sweep that already transitioned the run to
+      // `paused` (crash recovery) gets stomped — turning a recoverable
+      // run into a terminal one. The early-failure path (missing plan,
+      // git init error) is the only caller, and in those cases the run
+      // really is `running` (we just claimed it).
       await db
         .from("runs")
-        .update({ status: "failed", finished_at: new Date().toISOString() })
-        .eq("id", runId);
+        .update({
+          status: "failed",
+          finished_at: new Date().toISOString(),
+          cancellation_reason: reason.slice(0, 500),
+        })
+        .eq("id", runId)
+        .eq("status", "running");
       this.logger.info({ runId, reason }, "marked run as failed");
     } catch (e) {
       this.logger.error({ err: e, runId, reason }, "failed to mark run as failed in DB");

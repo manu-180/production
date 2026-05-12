@@ -81,12 +81,14 @@ function toPromptDefinition(parsed: ParsedPrompt, order: number): PromptDefiniti
   // but aren't part of the public PromptFrontmatter contract.
   const {
     title,
+    guardian,
     continueSession,
     allowedTools,
     permissionMode,
     maxTurns,
     maxBudgetUsd,
     timeoutMs,
+    idleTimeoutMs,
     retries,
     requiresApproval,
     rollbackOnFail,
@@ -94,12 +96,14 @@ function toPromptDefinition(parsed: ParsedPrompt, order: number): PromptDefiniti
 
   const frontmatter: PromptFrontmatter = {
     title,
+    guardian,
     continueSession,
     allowedTools,
     permissionMode,
     maxTurns,
     maxBudgetUsd,
     timeoutMs,
+    idleTimeoutMs,
     retries,
     requiresApproval,
     rollbackOnFail,
@@ -323,6 +327,7 @@ async function loadPlanFromDb(planId: string, db: SupabaseLikeClient): Promise<P
       content: row.content,
       frontmatter: {
         title: fm["title"] as string | undefined,
+        guardian: fm["guardian"] as boolean | undefined,
         continueSession: fm["continueSession"] as boolean | undefined,
         allowedTools: fm["allowedTools"] as string[] | undefined,
         permissionMode: fm["permissionMode"] as
@@ -333,6 +338,7 @@ async function loadPlanFromDb(planId: string, db: SupabaseLikeClient): Promise<P
         maxTurns: fm["maxTurns"] as number | undefined,
         maxBudgetUsd: fm["maxBudgetUsd"] as number | undefined,
         timeoutMs: fm["timeoutMs"] as number | undefined,
+        idleTimeoutMs: fm["idleTimeoutMs"] as number | undefined,
         retries: fm["retries"] as number | undefined,
         requiresApproval: fm["requiresApproval"] as boolean | undefined,
         rollbackOnFail: fm["rollbackOnFail"] as boolean | undefined,

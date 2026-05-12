@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { useTriggerRun } from "@/hooks/use-plan-mutations";
-import { FolderOpenIcon, Loader2Icon, PlayIcon, TerminalIcon } from "lucide-react";
+import { DatabaseIcon, FolderOpenIcon, Loader2Icon, PlayIcon, TerminalIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -175,6 +175,15 @@ export function RunLauncherDialog({
               )}
             </div>
           )}
+
+          {/* Supabase MCP reminder */}
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-800/60 dark:bg-amber-950/30">
+            <DatabaseIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p className="text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">Recordá conectar el MCP de Supabase</span> al proyecto
+              seleccionado antes de lanzar.
+            </p>
+          </div>
 
           {/* Actions */}
           <div className="flex items-center gap-2 pt-1">
