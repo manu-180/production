@@ -48,8 +48,8 @@ interface LlmJsonResponse {
   confidence: number;
 }
 
-const DEFAULT_LLM_MODEL = "claude-haiku-4-5";
-const FALLBACK_LLM_MODEL = "claude-3-5-haiku-20241022";
+const DEFAULT_LLM_MODEL = "claude-haiku-4-7";
+const FALLBACK_LLM_MODEL = "claude-haiku-4-5";
 
 const HIGH_CONFIDENCE_THRESHOLD = 0.6;
 const LOW_CONFIDENCE_THRESHOLD = 0.3;

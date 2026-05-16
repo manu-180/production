@@ -2,8 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type Logger, createLogger } from "../../logger.js";
 import type { DecisionInput, DecisionResult, DecisionStrategy } from "../decision-engine.js";
 
-const DEFAULT_LLM_MODEL = "claude-sonnet-4-5";
-const FALLBACK_LLM_MODEL = "claude-3-5-sonnet-20241022";
+const DEFAULT_LLM_MODEL = "claude-sonnet-4-7";
+const FALLBACK_LLM_MODEL = "claude-sonnet-4-6";
 const LLM_TIMEOUT_MS = 15_000;
 const HUMAN_REVIEW_THRESHOLD = 0.7;
 
@@ -24,7 +24,7 @@ interface LlmJsonResponse {
 interface StrategyLlmConfig {
   /** Anthropic API key — overrides the per-call key from `DecisionInput`. */
   anthropicApiKey?: string;
-  /** Override the default model id (`claude-sonnet-4-5`). */
+  /** Override the default model id (`claude-sonnet-4-7`). */
   llmModel?: string;
 }
 

@@ -295,7 +295,7 @@ describe("LlmStrategy", () => {
       system: string;
       messages: Array<{ role: string; content: string }>;
     };
-    expect(payload.model).toBe("claude-sonnet-4-5");
+    expect(payload.model).toBe("claude-sonnet-4-7");
     expect(payload.system).toContain("technical architect");
     expect(payload.system).toContain("Respond ONLY with valid JSON");
     expect(payload.messages[0]?.content).toContain("Should we use Redis");
