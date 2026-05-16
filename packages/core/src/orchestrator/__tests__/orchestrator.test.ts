@@ -242,6 +242,74 @@ describe("Orchestrator — failure path", () => {
 
     expect(events.some((e) => e.type === "run.failed")).toBe(true);
   });
+
+  it("continues to next prompt after a terminal failure (continue-on-failure)", async () => {
+    const plan = makePlan([
+      makePrompt("p1", 0),
+      makePrompt("p2", 1),
+      makePrompt("p3", 2),
+      makePrompt("p4", 3),
+    ]);
+    claudeProcessMock.waitImpls = [
+      async () => defaultSuccessResult(), // p1 ok
+      async () => defaultErrorResult(), // p2 fails (retries=0 → terminal)
+      async () => defaultSuccessResult(), // p3 must still run
+      async () => defaultSuccessResult(), // p4 must still run
+    ];
+    const events: RunEvent[] = [];
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-cof",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+      onEvent: (e) => events.push(e),
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("failed");
+    expect(result.failedPromptId).toBe("p2");
+    expect(result.failedPromptIds).toEqual(["p2"]);
+    // p1, p3, p4 all ran (p2 failed and was skipped after retries).
+    expect(claudeProcessMock.instances.length).toBe(4);
+    // Completed prompts excludes failures.
+    expect(result.completedPrompts).toBe(3);
+  });
+
+  it("aborts immediately when rollbackOnFail=true prompt fails", async () => {
+    const p1 = makePrompt("p1", 0);
+    const p2 = makePrompt("p2", 1);
+    p2.frontmatter.rollbackOnFail = true;
+    const p3 = makePrompt("p3", 2);
+    const plan = makePlan([p1, p2, p3]);
+    claudeProcessMock.waitImpls = [
+      async () => defaultSuccessResult(),
+      async () => defaultErrorResult(),
+      async () => defaultSuccessResult(),
+    ];
+
+    const commitSpy = vi.fn().mockResolvedValue("sha-a");
+    const rollbackSpy = vi.fn().mockResolvedValue(undefined);
+    const orchestrator = new Orchestrator({
+      plan,
+      workingDir: "/tmp/work",
+      runId: "run-hardstop",
+      db: createMockDb(),
+      pauseController: new PauseController(),
+      checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe("failed");
+    expect(result.failedPromptId).toBe("p2");
+    // Hard stop: p3 was NOT executed.
+    expect(claudeProcessMock.instances.length).toBe(2);
+    // Rollback was invoked with the lastGoodSha from p1's wave commit.
+    expect(rollbackSpy).toHaveBeenCalledTimes(1);
+    expect(rollbackSpy).toHaveBeenCalledWith("sha-a");
+  });
 });
 
 describe("Orchestrator — pause/resume", () => {
@@ -904,6 +972,10 @@ describe("Orchestrator — parallel waves", () => {
       db: createMockDb(),
       pauseController: new PauseController(),
       checkpoint: { commit: commitSpy, rollback: rollbackSpy },
+      // Disable stagger jitter (which can add up to PARALLEL_STAGGER_MAX_MS per
+      // sibling) so the test completes within vitest's 5s default timeout.
+      // This test cares about commit attribution, not timing.
+      parallelStaggerMaxMs: 0,
     });
 
     const result = await orchestrator.run();
@@ -960,7 +1032,7 @@ describe("Orchestrator — parallel waves", () => {
     expect(peak).toBeGreaterThanOrEqual(2);
   });
 
-  it("wave fails if any prompt fails after retries; siblings still complete", async () => {
+  it("wave with mixed outcomes commits successful siblings and the run is reported as failed", async () => {
     const plan = makePlan([
       makePromptInWave("p1", 0, 1),
       makePromptInWave("p2", 1, 1),
@@ -1007,15 +1079,21 @@ describe("Orchestrator — parallel waves", () => {
 
     const result = await orchestrator.run();
 
+    // Continue-on-failure: the run is reported failed because at least one
+    // prompt exhausted retries, but the wave's surviving siblings still got
+    // their checkpoint commit so their work isn't lost.
     expect(result.status).toBe("failed");
     expect(result.failedPromptId).toBe("p1");
-    // Siblings DID complete (allSettled behavior).
+    expect(result.failedPromptIds).toEqual(["p1"]);
     expect(p2Started).toBe(true);
     expect(p2Finished).toBe(true);
     expect(p3Started).toBe(true);
     expect(p3Finished).toBe(true);
-    // No checkpoint commit on a failed wave.
-    expect(commitSpy).not.toHaveBeenCalled();
+    // A single checkpoint commit captures the wave's surviving siblings.
+    expect(commitSpy).toHaveBeenCalledTimes(1);
+    // rollback() is never invoked unless a failed prompt opted in via
+    // rollbackOnFail; none did here.
+    expect(rollbackSpy).not.toHaveBeenCalled();
   });
 
   it("disables continueSession with a warning in parallel waves", async () => {
@@ -1031,6 +1109,8 @@ describe("Orchestrator — parallel waves", () => {
       runId: "run-parallel-cs",
       db: createMockDb(),
       pauseController: new PauseController(),
+      // Disable stagger jitter to keep the test within vitest's 5s timeout.
+      parallelStaggerMaxMs: 0,
     });
 
     const result = await orchestrator.run();

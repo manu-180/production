@@ -20,6 +20,7 @@ const permissionModeSchema = z.enum(["default", "acceptEdits", "bypassPermission
 
 export const promptFrontmatterSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
+  guardian: z.boolean().optional(),
   continueSession: z.boolean().optional(),
   allowedTools: z.array(allowedToolSchema).optional(),
   permissionMode: permissionModeSchema.optional(),
@@ -36,10 +37,10 @@ export const promptFrontmatterSchema = z.object({
 export type PromptFrontmatter = z.infer<typeof promptFrontmatterSchema>;
 
 export const defaultFrontmatter: PromptFrontmatter = {
-  continueSession: false,
+  continueSession: true,
   allowedTools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep"],
   permissionMode: "bypassPermissions",
-  maxTurns: 50,
+  maxTurns: 20,
   requiresApproval: false,
   rollbackOnFail: false,
 };

@@ -4,7 +4,8 @@ import { streamLimiter } from "@/lib/api/rate-limit";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET, formatSseEvent } from "../route";
+import { formatSseEvent } from "../format";
+import { GET } from "../route";
 
 function req(url: string, opts: { abort?: AbortController } = {}): NextRequest {
   // NextRequest's RequestInit is narrower than the global one; cast through

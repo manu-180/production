@@ -41,6 +41,23 @@ type NextRouteContext<TParams> = {
 };
 
 /**
+ * Public signature of a `defineRoute`-wrapped handler. Next.js 15 typegen
+ * checks every export against `RouteContext` and rejects `ctx?` (optional)
+ * because `RouteContext` requires `params` to be defined.
+ *
+ * Two callable overloads cover both surfaces without changing test code:
+ *  1. `(req, ctx)` — matches Next's `RouteContext` for the typegen check.
+ *  2. `(req)` — used by tests/internal callers that don't care about params.
+ *
+ * The implementation accepts ctx as optional at runtime and falls back to
+ * an empty params bag when omitted.
+ */
+export type DefinedRoute<TParams = Record<string, never>> = {
+  (req: NextRequest, ctx: NextRouteContext<TParams>): Promise<NextResponse>;
+  (req: NextRequest): Promise<NextResponse>;
+};
+
+/**
  * Wrap a route handler with auth, rate-limiting, validation, traceId and
  * uniform error responses. Routes only express what's specific to them
  * (schema, business logic) — boilerplate lives here.
@@ -54,8 +71,11 @@ type NextRouteContext<TParams> = {
 export function defineRoute<TBody = undefined, TQuery = undefined, TParams = Record<string, never>>(
   options: DefineRouteOptions<TBody, TQuery>,
   handler: Handler<TBody, TQuery, TParams>,
-): (req: NextRequest, ctx?: NextRouteContext<TParams>) => Promise<NextResponse> {
-  return async (req, ctx) => {
+): DefinedRoute<TParams> {
+  // The implementation accepts `ctx` as optional so existing tests that call
+  // the route with just a request still work. The exported signature pins it
+  // as required to satisfy Next 15's `RouteContext` typegen check.
+  const impl = async (req: NextRequest, ctx?: NextRouteContext<TParams>) => {
     const traceId = resolveTraceId(req);
     const reqId = traceId.slice(0, 8);
     const path = req.nextUrl.pathname;
@@ -149,6 +169,9 @@ export function defineRoute<TBody = undefined, TQuery = undefined, TParams = Rec
       });
     }
   };
+  // Cast widens `ctx?` (impl) to `ctx` (export) — runtime behavior is
+  // unchanged; the impl already handles ctx being undefined.
+  return impl as DefinedRoute<TParams>;
 }
 
 async function readJsonSafe(req: NextRequest): Promise<unknown> {

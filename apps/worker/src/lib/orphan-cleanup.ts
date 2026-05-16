@@ -103,10 +103,42 @@ export async function killProcessTree(pid: number): Promise<boolean> {
 }
 
 /**
- * Kills all detected claude processes at startup. Runs once only — assumes
- * that if the worker just started, no legitimate claude process should exist.
- * Manual CLI usage from another terminal will also be killed (documented
- * trade-off: worker and manual CLI must not coexist).
+ * Returns true when the given pid corresponds to a currently-running
+ * process on this host. Used to identify TRULY orphaned claude.exe
+ * processes — those whose worker parent has already exited.
+ *
+ * On all platforms `process.kill(pid, 0)` is the standard "is alive"
+ * probe: signal 0 performs the permission check without delivering a
+ * signal. It throws ESRCH when the pid is gone and EPERM when the pid
+ * exists but we lack permission (which still means it exists). Anything
+ * else (or a successful return) → alive.
+ */
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EPERM") return true;
+    return false;
+  }
+}
+
+/**
+ * Kills claude processes left over from a previous worker crash — i.e.
+ * those whose parent process is no longer alive. Previously this
+ * indiscriminately killed every claude.exe on the host, which also took
+ * out:
+ *   - sibling worker instances on the same machine
+ *   - the user's manual `claude` CLI sessions in other terminals
+ *   - any IDE plugin that spawns claude.exe
+ *
+ * Filtering by parent liveness keeps the original recovery intent (clean
+ * up after a crashed worker) without collateral damage. The trade-off:
+ * a claude.exe whose parent is a different live process is left alone,
+ * even if it's truly stuck — but those can be killed manually and this
+ * function is supposed to be a safety net, not a hammer.
  */
 export async function cleanupOrphanClaudeProcesses(): Promise<{
   found: number;
@@ -118,13 +150,28 @@ export async function cleanupOrphanClaudeProcesses(): Promise<{
     return { found: 0, killed: 0 };
   }
 
+  const orphans = procs.filter((p) => !isProcessAlive(p.parentPid));
+  const skipped = procs.length - orphans.length;
+  if (orphans.length === 0) {
+    logger.info(
+      { totalSeen: procs.length, skipped },
+      "orphan-cleanup.none_truly_orphaned (parents alive)",
+    );
+    return { found: procs.length, killed: 0 };
+  }
+
   logger.warn(
-    { count: procs.length, pids: procs.map((p) => p.pid) },
+    {
+      total: procs.length,
+      orphans: orphans.length,
+      skipped,
+      orphanPids: orphans.map((p) => p.pid),
+    },
     "orphan-cleanup.found_orphans",
   );
 
   let killed = 0;
-  for (const p of procs) {
+  for (const p of orphans) {
     const ok = await killProcessTree(p.pid);
     if (ok) killed += 1;
     logger.info({ pid: p.pid, parentPid: p.parentPid, killed: ok }, "orphan-cleanup.kill_attempt");

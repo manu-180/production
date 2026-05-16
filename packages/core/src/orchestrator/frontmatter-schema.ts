@@ -14,8 +14,25 @@ const PromptFrontmatterSchema = z.object({
   /** Human-readable title; if omitted, parser derives one from the filename. */
   title: z.string().optional(),
 
-  /** Whether to resume the previous Claude session instead of starting fresh. */
-  continueSession: z.boolean().default(false),
+  /**
+   * Whether the Guardian runs for this prompt. Defaults to `true`. Set to
+   * `false` for mechanical prompts (renames, simple component scaffolds,
+   * formatting passes) where the Guardian's detect+decide cycle per turn is
+   * pure overhead. The orchestrator skips guideline injection AND the
+   * post-turn intervention check when this is false.
+   */
+  guardian: z.boolean().default(true),
+
+  /**
+   * Whether to resume the previous Claude session instead of starting fresh.
+   * Defaults to `true` so sequential prompts in a plan reuse the previous
+   * session's prompt cache and tool-call context (huge token savings for
+   * multi-step plans operating on the same codebase). Parallel waves
+   * automatically strip the resume id (siblings cannot share a session),
+   * and the first prompt naturally has no prior session to resume from,
+   * so the default is safe in both cases.
+   */
+  continueSession: z.boolean().default(true),
 
   /** Tools the executor is allowed to invoke for this prompt. */
   allowedTools: z.array(z.string()).default(() => ["Edit", "Write", "Read", "Bash"]),
@@ -25,8 +42,13 @@ const PromptFrontmatterSchema = z.object({
     .enum(["default", "acceptEdits", "bypassPermissions"])
     .default("bypassPermissions"),
 
-  /** Maximum agent turns before the executor stops the prompt. */
-  maxTurns: z.number().int().positive().default(50),
+  /**
+   * Maximum agent turns before the executor stops the prompt. Default lowered
+   * to 20 (from 50) to discipline prompt size and cut tail-expensive runs that
+   * loop without converging. Prompts that genuinely need more should set it
+   * explicitly in their frontmatter.
+   */
+  maxTurns: z.number().int().positive().default(20),
 
   /** Optional hard cap on USD spend for this prompt. */
   maxBudgetUsd: z.number().positive().optional(),

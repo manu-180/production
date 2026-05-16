@@ -15,6 +15,7 @@
  * orchestrator's cancel path, which kills the in-flight Claude process.
  */
 
+import { existsSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +27,7 @@ import type { Database } from "@conductor/db";
 import { createClient } from "@supabase/supabase-js";
 import pino from "pino";
 import { PgListener } from "./lib/pg-listen.js";
+import { startOrphanSweeperTick } from "./orphan-sweeper-tick.js";
 import { RunHandler } from "./run-handler.js";
 import { startSchedulerTick } from "./scheduler-tick.js";
 import { runStartupRecovery } from "./startup-recovery.js";
@@ -69,6 +71,13 @@ const activeRuns = new Map<string, RunHandler>();
 const activePromises = new Map<string, Promise<void>>();
 let shuttingDown = false;
 
+// Hoisted Supabase client used by the queue poller. Previously a fresh
+// client was created on every tick (every 3s) which leaked socket handles
+// on long-running workers — observed contributing to OOM during multi-hour
+// 360-prompt plans on Windows. One client survives the whole worker
+// lifetime; Supabase-js manages its own pool.
+const queuePollerDb = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Run discovery + claim
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +89,26 @@ interface QueuedRunRow {
 }
 
 /**
+ * Returns true when this worker can actually execute the given run — i.e.
+ * its `working_dir` exists on this host's filesystem and is a directory.
+ *
+ * In a multi-machine setup (the same Supabase project shared between, say,
+ * a desktop and a laptop) every worker subscribes to the same queue but
+ * each only has access to a subset of the user's project folders. Without
+ * this guard, the wrong worker can win the claim race and then hang in
+ * `RepoInitializer` trying to `git status` a path that doesn't exist —
+ * leaving the run zombie with `started_at = null`.
+ */
+function workerCanHandle(workingDir: string): boolean {
+  try {
+    if (!existsSync(workingDir)) return false;
+    return statSync(workingDir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Look for one queued run, atomically claim it, and start a handler.
  *
  * Claiming is done as a `WHERE status='queued'` conditional UPDATE — if two
@@ -87,18 +116,23 @@ interface QueuedRunRow {
  * loser silently moves on. This is good enough for the polling backend; a
  * proper `SELECT FOR UPDATE SKIP LOCKED` lands when we cut over to a Postgres
  * connection.
+ *
+ * Multi-host filtering: we pull a small batch of candidates (oldest first)
+ * and pick the first one whose `working_dir` exists on this host. Anything
+ * we skip stays `queued` for whichever worker can satisfy the path.
  */
 async function checkForQueuedRuns(): Promise<void> {
   if (shuttingDown) return;
   if (activeRuns.size >= WORKER_CONCURRENCY) return;
 
-  const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const db = queuePollerDb;
 
   const { data: runs, error: selectError } = await db
     .from("runs")
     .select("id, plan_id, working_dir")
     .eq("status", "queued")
-    .limit(1);
+    .order("created_at", { ascending: true })
+    .limit(10);
 
   if (selectError !== null) {
     logger.error({ err: selectError }, "failed to query queued runs");
@@ -106,8 +140,37 @@ async function checkForQueuedRuns(): Promise<void> {
   }
 
   const rows = (runs ?? []) as QueuedRunRow[];
-  const run = rows[0];
-  if (run === undefined) return;
+  if (rows.length === 0) return;
+
+  const run = rows.find((r) => workerCanHandle(r.working_dir));
+  if (run === undefined) {
+    // Raised from debug → warn so the operator notices when queued runs are
+    // being silently skipped because the working dir doesn't exist on this
+    // host (e.g. network drive disconnected, antivirus quarantined the
+    // folder, plan was created on a different machine). Previously these
+    // runs sat in `queued` forever with no visible signal.
+    logger.warn(
+      {
+        host: hostname(),
+        skipped: rows.length,
+        firstSkippedDir: rows[0]?.working_dir ?? null,
+      },
+      "queued runs exist but none match this host's filesystem — leaving them for another worker",
+    );
+    return;
+  }
+
+  // Pre-register the run in `activeRuns` BEFORE flipping the DB status.
+  // The orphan-sweeper reads `activeRuns` via `getActiveRunIds()` and uses
+  // that set to exclude in-flight runs from reaping. If we flip
+  // `status='running'` first and only set `activeRuns.set(...)` after the
+  // RunHandler is constructed, the sweeper has a small window where it
+  // sees status='running' + last_heartbeat_at=NULL + run NOT in
+  // activeRuns → false-positive orphan → run gets re-paused before its
+  // first heartbeat lands. Reserving the slot with a placeholder closes
+  // that window.
+  const placeholderHandler = { runId: run.id } as unknown as RunHandler;
+  activeRuns.set(run.id, placeholderHandler);
 
   // Atomic claim. The second `.eq('status', 'queued')` is the CAS guard:
   // if another worker already flipped it, our update affects zero rows and
@@ -119,6 +182,7 @@ async function checkForQueuedRuns(): Promise<void> {
     .eq("status", "queued");
 
   if (claimError !== null) {
+    activeRuns.delete(run.id);
     logger.error({ runId: run.id, err: claimError }, "failed to claim run");
     return;
   }
@@ -129,6 +193,7 @@ async function checkForQueuedRuns(): Promise<void> {
     supabaseServiceKey: SUPABASE_SERVICE_ROLE_KEY,
     logger,
   });
+  // Replace the placeholder slot reserved above with the real handler.
   activeRuns.set(run.id, handler);
 
   const promise = handler
@@ -190,6 +255,7 @@ async function updateWorkerHeartbeat(db: ReturnType<typeof createClient<Database
 // ─────────────────────────────────────────────────────────────────────────────
 
 let stopSchedulerTick: (() => void) | null = null;
+let stopOrphanSweeperTick: (() => void) | null = null;
 let workerHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -206,6 +272,7 @@ function gracefulShutdown(signal: string): void {
   const shutdown = async (): Promise<void> => {
     listener.stop();
     stopSchedulerTick?.();
+    stopOrphanSweeperTick?.();
     if (workerHeartbeatTimer !== null) {
       clearInterval(workerHeartbeatTimer);
       workerHeartbeatTimer = null;
@@ -266,6 +333,17 @@ await listener.start();
 {
   const schedulerClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   stopSchedulerTick = startSchedulerTick(schedulerClient, logger);
+}
+
+// Start the periodic orphan-run sweeper. Recovers runs left in `running`
+// by a crashed worker (DB rows only; claude.exe processes are cleaned up
+// on the next worker boot). Excludes the runs this worker currently owns
+// so we never reap our own in-flight work.
+{
+  const sweeperClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  stopOrphanSweeperTick = startOrphanSweeperTick(sweeperClient, logger, {
+    getActiveRunIds: () => new Set(activeRuns.keys()),
+  });
 }
 
 logger.info({ workerId: WORKER_ID }, "conductor worker ready");

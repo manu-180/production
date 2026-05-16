@@ -15,6 +15,7 @@
 import {
   ClaudeProcess,
   type ClaudeProcessOptions,
+  DEFAULT_IDLE_TIMEOUT_MS,
   type ExecutionResult,
   ExecutorError,
   type ExecutorErrorCode,
@@ -57,8 +58,18 @@ export const PARALLEL_CONCURRENCY_CAP = 2;
  * the retry path can recover, rather than burning the run's wall-clock
  * budget on a stuck process. Honors any explicit per-prompt
  * `idleTimeoutMs` if it's already lower.
+ *
+ * Bumped from 45s → 120s after observing a real-world run (32 prompts,
+ * working-dir Windows, large prompts with heavy "context-to-read"
+ * frontmatter) where every parallel attempt failed at exactly 45s with
+ * zero output captured. Claude CLI cold-start on Windows routinely takes
+ * 20-40s when MCP servers are configured in the working dir; combined
+ * with two siblings spawning at roughly the same time, the first stdout
+ * line frequently lands past 45s. 120s is still well below the executor
+ * default's wall-clock cap (30 min) so genuinely hung processes are
+ * killed quickly — we just stop killing healthy-but-slow ones.
  */
-export const PARALLEL_IDLE_TIMEOUT_MS = 45_000;
+export const PARALLEL_IDLE_TIMEOUT_MS = 120_000;
 
 /**
  * Maximum stagger applied to a sibling's start in a parallel wave. Each
@@ -66,8 +77,14 @@ export const PARALLEL_IDLE_TIMEOUT_MS = 45_000;
  * spawning Claude — prevents two CLI processes from hitting the OAuth
  * refresh endpoint in the same millisecond on retry, which is what
  * triggers contention/hangs on Windows.
+ *
+ * Bumped from 1.5s → 5s so the second sibling lands clearly outside the
+ * first sibling's OAuth/MCP cold-start window. With the previous 1.5s
+ * cap, both processes still hit the auth refresh inside the same ~3s
+ * burst on a cold cache, which was the trigger for the all-IDLE failure
+ * mode this constant exists to prevent.
  */
-export const PARALLEL_STAGGER_MAX_MS = 1_500;
+export const PARALLEL_STAGGER_MAX_MS = 5_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase-stub interfaces (CheckpointManager: phase 08)
@@ -100,6 +117,14 @@ export interface CheckpointManager {
       guardianDecisions: number;
     },
   ): void;
+  /**
+   * Optional: discard any uncommitted changes the failed prompt may have
+   * left in the working tree, so they don't leak into the next prompt. The
+   * orchestrator calls this after a wave that ended entirely in failure
+   * (continue-on-failure path). Best-effort; errors are logged but never
+   * thrown.
+   */
+  discardDirty?(): Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,7 +187,19 @@ export interface RunResult {
   totalCostUsd: number;
   totalDurationMs: number;
   completedPrompts: number;
+  /**
+   * First prompt that failed terminally. Kept for backwards compatibility
+   * with callers that only need a single id; the full list is in
+   * {@link failedPromptIds}.
+   */
   failedPromptId?: string;
+  /**
+   * Every prompt id that exhausted retries during this run. Empty when
+   * {@link status} === "completed". Populated even when the run continued
+   * past failures (continue-on-failure mode is the default).
+   */
+  failedPromptIds?: string[];
+  /** First failure's error message (kept for BC; full list in `errors`). */
   error?: string;
 }
 
@@ -340,18 +377,25 @@ function classifyRetry(
 }
 
 async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new Error("aborted");
   if (ms <= 0) return;
   return new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) return reject(new Error("aborted"));
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(t);
-        reject(new Error("aborted"));
-      },
-      { once: true },
-    );
+    // Both timer-completion and abort paths must unregister the abort
+    // listener — otherwise every successful sleep leaks one listener on
+    // the PauseController's AbortSignal. With ~360 prompts × multiple
+    // sleeps each (backoff, stagger, rate-limit wait), the controller
+    // accumulates thousands of listeners → Node emits
+    // MaxListenersExceededWarning and may drop events, breaking
+    // cancellation propagation mid-run.
+    const onAbort = (): void => {
+      clearTimeout(t);
+      reject(new Error("aborted"));
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -810,6 +854,9 @@ export class Orchestrator {
     await this.emit({ type: "run.started", runId: this.runId });
 
     let lastGoodSha = "";
+    const failedPromptIds: string[] = [];
+    let firstFailureError: string | undefined;
+    let firstFailureId: string | undefined;
 
     const waves = groupIntoWaves(sortedPrompts);
 
@@ -818,267 +865,432 @@ export class Orchestrator {
       totalCostUsd: context.accumulatedCostUsd,
       totalDurationMs: Date.now() - startTime,
       completedPrompts: context.currentPromptIndex,
+      ...(failedPromptIds.length > 0 ? { failedPromptIds: [...failedPromptIds] } : {}),
     });
 
     for (const wave of waves) {
-      // ── Per-prompt skip handling (resume + explicit skip) ─────────────────
-      // Each prompt in the wave is checked individually. Skipped prompts are
-      // removed from the active set; if everything in the wave is skipped we
-      // move on to the next wave.
-      const activePrompts: PromptDefinition[] = [];
-      const activeIndices: number[] = [];
-      for (let j = 0; j < wave.prompts.length; j++) {
-        const idx = wave.startIndex + j;
-        const p = wave.prompts[j];
-        if (!p) continue;
-
-        if (idx < resumeFromIndex) {
-          await markPromptSkipped(this.db, this.runId, p.id, "resumed_from_index");
-          console.info(`[Orchestrator] skipping prompt ${p.id} (index ${idx}) for resume`);
-          context.currentPromptIndex++;
-          continue;
-        }
-        if (this.alreadyDonePromptIds.has(p.id)) {
-          await markPromptSkipped(this.db, this.runId, p.id, "already_done");
-          await this.emit({
-            type: "prompt.failed",
-            promptId: p.id,
-            error: "Skipped: already completed successfully in a previous run of this plan",
-            willRetry: false,
-          });
-          console.info(
-            `[Orchestrator] skipping prompt ${p.id} (index ${idx}) — already_done in prior run`,
-          );
-          context.currentPromptIndex++;
-          continue;
-        }
-        const skipReason = this.skipped.get(p.id);
-        if (skipReason !== undefined) {
-          // No `prompt.skipped` variant in RunEvent yet; we surface it as a
-          // `prompt.failed` with willRetry=false (closest existing shape).
-          await this.emit({
-            type: "prompt.failed",
-            promptId: p.id,
-            error: `Skipped: ${skipReason}`,
-            willRetry: false,
-          });
-          this.skipped.delete(p.id);
-          context.currentPromptIndex++;
-          continue;
-        }
-        activePrompts.push(p);
-        activeIndices.push(idx);
-      }
-      if (activePrompts.length === 0) continue;
-
-      // ── Pause / cancel BEFORE the wave ────────────────────────────────────
-      const wasPaused = this.pauseController.isPaused();
-      if (wasPaused) {
-        await updateRunStatus(this.runId, "paused", this.db);
-        await this.emit({ type: "run.paused", reason: "Paused by user" });
-      }
       try {
-        await this.pauseController.waitIfPaused();
-      } catch (err) {
-        if (err instanceof CancelledError) {
+        // ── Per-prompt skip handling (resume + explicit skip) ─────────────────
+        // Each prompt in the wave is checked individually. Skipped prompts are
+        // removed from the active set; if everything in the wave is skipped we
+        // move on to the next wave.
+        //
+        // Resume semantics for parallel waves: when `resumeFromIndex` falls
+        // INSIDE a parallel wave (e.g. wave spans 58-61, resume index=60),
+        // a per-prompt skip would silently drop prompts 58 and 59 — they
+        // weren't necessarily done before, just unlucky enough to be below
+        // the cursor. To preserve correctness we re-run the WHOLE parallel
+        // wave when it straddles the resume boundary; `alreadyDonePromptIds`
+        // dedupes the ones that actually succeeded previously, while genuine
+        // failures get another shot. Sequential waves (single prompt) keep
+        // the simple per-prompt skip.
+        const waveStraddlesResume =
+          wave.isParallel &&
+          wave.startIndex < resumeFromIndex &&
+          wave.startIndex + wave.prompts.length > resumeFromIndex;
+        if (waveStraddlesResume) {
+          console.info(
+            `[Orchestrator] resume cursor ${resumeFromIndex} falls inside parallel wave ${wave.wave} (startIndex=${wave.startIndex}, size=${wave.prompts.length}) — re-running the whole wave; alreadyDonePromptIds will dedupe`,
+          );
+        }
+        const activePrompts: PromptDefinition[] = [];
+        const activeIndices: number[] = [];
+        for (let j = 0; j < wave.prompts.length; j++) {
+          const idx = wave.startIndex + j;
+          const p = wave.prompts[j];
+          if (!p) continue;
+
+          if (idx < resumeFromIndex && !waveStraddlesResume) {
+            await markPromptSkipped(this.db, this.runId, p.id, "resumed_from_index");
+            console.info(`[Orchestrator] skipping prompt ${p.id} (index ${idx}) for resume`);
+            context.currentPromptIndex++;
+            continue;
+          }
+          if (this.alreadyDonePromptIds.has(p.id)) {
+            await markPromptSkipped(this.db, this.runId, p.id, "already_done");
+            await this.emit({
+              type: "prompt.skipped",
+              promptId: p.id,
+              reason: "already_done",
+              message: "Already completed successfully in a previous run of this plan",
+            });
+            console.info(
+              `[Orchestrator] skipping prompt ${p.id} (index ${idx}) — already_done in prior run`,
+            );
+            context.currentPromptIndex++;
+            continue;
+          }
+          const skipReason = this.skipped.get(p.id);
+          if (skipReason !== undefined) {
+            await this.emit({
+              type: "prompt.skipped",
+              promptId: p.id,
+              reason: "user_skip",
+              message: skipReason,
+            });
+            this.skipped.delete(p.id);
+            context.currentPromptIndex++;
+            continue;
+          }
+          activePrompts.push(p);
+          activeIndices.push(idx);
+        }
+        if (activePrompts.length === 0) continue;
+
+        // ── Pause / cancel BEFORE the wave ────────────────────────────────────
+        const wasPaused = this.pauseController.isPaused();
+        if (wasPaused) {
+          await updateRunStatus(this.runId, "paused", this.db);
+          await this.emit({ type: "run.paused", reason: "Paused by user" });
+        }
+        try {
+          await this.pauseController.waitIfPaused();
+        } catch (err) {
+          if (err instanceof CancelledError) {
+            await updateRunStatus(this.runId, "cancelled", this.db);
+            return cancelledResult();
+          }
+          throw err;
+        }
+        if (wasPaused && !this.pauseController.isCancelled() && !this.pauseController.isPaused()) {
+          await updateRunStatus(this.runId, "running", this.db);
+        }
+        if (this.pauseController.isCancelled()) {
           await updateRunStatus(this.runId, "cancelled", this.db);
           return cancelledResult();
         }
-        throw err;
-      }
-      if (wasPaused && !this.pauseController.isCancelled() && !this.pauseController.isPaused()) {
-        await updateRunStatus(this.runId, "running", this.db);
-      }
-      if (this.pauseController.isCancelled()) {
-        await updateRunStatus(this.runId, "cancelled", this.db);
-        return cancelledResult();
-      }
 
-      const isParallel = activePrompts.length > 1;
+        // Use the ORIGINAL wave intent rather than `activePrompts.length > 1`.
+        // A wave authored as parallel that lost siblings to `alreadyDonePromptIds`
+        // (e.g. 2 of 3 already_done, only 1 active) must still behave as parallel:
+        //   - DO NOT inherit `lastSessionId` from a different prompt's session.
+        //   - DO apply the parallel-wave idle-timeout floor.
+        // Deriving from `activePrompts.length` silently flipped the survivor into
+        // "sequential mode", causing it to resume the wrong session and use the
+        // tighter sequential idle timeout. Trust the wave-grouper's flag.
+        const isParallel = wave.isParallel;
 
-      // ── Emit prompt.started for every active prompt in the wave ───────────
-      for (let j = 0; j < activePrompts.length; j++) {
-        const p = activePrompts[j];
-        const idx = activeIndices[j];
-        if (!p || idx === undefined) continue;
-        await this.emit({
-          type: "prompt.started",
-          promptId: p.id,
-          index: idx,
-          total: sortedPrompts.length,
-        });
-      }
+        // ── Emit prompt.started for every active prompt in the wave ───────────
+        for (let j = 0; j < activePrompts.length; j++) {
+          const p = activePrompts[j];
+          const idx = activeIndices[j];
+          if (!p || idx === undefined) continue;
+          await this.emit({
+            type: "prompt.started",
+            promptId: p.id,
+            index: idx,
+            total: sortedPrompts.length,
+          });
+        }
 
-      if (isParallel) {
-        // Parallel waves cannot share a single sessionId across siblings —
-        // surface a warning for any prompt that requested continueSession so
-        // the operator notices.
-        for (const p of activePrompts) {
-          if (p.frontmatter.continueSession === true) {
-            console.warn(
-              `[Orchestrator] continueSession=true ignored for prompt ${p.id} in parallel wave ${wave.wave} (siblings cannot share a session)`,
-            );
+        if (isParallel) {
+          // Parallel waves cannot share a single sessionId across siblings —
+          // surface a warning for any prompt that requested continueSession so
+          // the operator notices.
+          for (const p of activePrompts) {
+            if (p.frontmatter.continueSession === true) {
+              console.warn(
+                `[Orchestrator] continueSession=true ignored for prompt ${p.id} in parallel wave ${wave.wave} (siblings cannot share a session)`,
+              );
+            }
           }
         }
-      }
 
-      // ── Execute (single-prompt fast path or parallel concurrency-limited) ─
-      const tasks = activePrompts.map(
-        (p) => () =>
-          this._executePromptCore(p, context, startTime, { ignoreContinueSession: isParallel }),
-      );
-      const settled = isParallel
-        ? await runWithConcurrencyLimit(this.parallelConcurrencyCap, tasks)
-        : await runWithConcurrencyLimit(1, tasks);
+        // ── Execute (single-prompt fast path or parallel concurrency-limited) ─
+        const tasks = activePrompts.map(
+          (p) => () =>
+            this._executePromptCore(p, context, startTime, { ignoreContinueSession: isParallel }),
+        );
+        const settled = isParallel
+          ? await runWithConcurrencyLimit(this.parallelConcurrencyCap, tasks)
+          : await runWithConcurrencyLimit(1, tasks);
 
-      // Normalize: rejected promises (shouldn't happen — _executePromptCore
-      // never throws) are coerced to a synthetic failed outcome.
-      const outcomes = settled.map((s): PromptOutcome => {
-        if (s.status === "fulfilled") return s.value;
-        return {
-          kind: "failed",
-          error: errorMessage(s.reason),
-          errorCode: "UNKNOWN",
-        };
-      });
+        // Normalize: rejected promises (shouldn't happen — _executePromptCore
+        // never throws) are coerced to a synthetic failed outcome.
+        const outcomes = settled.map((s): PromptOutcome => {
+          if (s.status === "fulfilled") return s.value;
+          return {
+            kind: "failed",
+            error: errorMessage(s.reason),
+            errorCode: "UNKNOWN",
+          };
+        });
 
-      // ── Cancellation: any cancelled outcome wins ──────────────────────────
-      if (outcomes.some((o) => o.kind === "cancelled")) {
-        await updateRunStatus(this.runId, "cancelled", this.db);
-        return cancelledResult();
-      }
+        // ── Cancellation: any cancelled outcome wins ──────────────────────────
+        if (outcomes.some((o) => o.kind === "cancelled")) {
+          await updateRunStatus(this.runId, "cancelled", this.db);
+          return cancelledResult();
+        }
 
-      // ── Failure: terminate run; sibling successes already wrote their rows
-      const firstFailedIdx = outcomes.findIndex((o) => o.kind === "failed");
-      if (firstFailedIdx !== -1) {
-        const failedPrompt = activePrompts[firstFailedIdx];
-        const failedOutcome = outcomes[firstFailedIdx];
-        if (!failedPrompt || !failedOutcome || failedOutcome.kind !== "failed") {
-          // Defensive — should never trigger.
+        // ── Failure handling: continue-on-failure ─────────────────────────────
+        // A terminal failure (all retries exhausted) is recorded but does NOT
+        // abort the run — we want to attempt every prompt in the plan and let
+        // the user review which ones failed at the end. A wave with mixed
+        // outcomes (some succeeded, some failed) still commits the successes;
+        // failed siblings are tracked in `failedPromptIds`. This matches the
+        // operator workflow: "ejecutar todo el plan, no quedarse colgado".
+        //
+        // The only hard short-circuit is `rollbackOnFail: true` on a failed
+        // prompt — that frontmatter flag is an explicit user opt-in saying
+        // "this prompt is a gating step; if it fails, stop and roll back".
+        const failedIndices: number[] = [];
+        let hardStopPrompt: PromptDefinition | null = null;
+        let hardStopOutcome: Extract<PromptOutcome, { kind: "failed" }> | null = null;
+        for (let j = 0; j < outcomes.length; j++) {
+          const o = outcomes[j];
+          if (!o || o.kind !== "failed") continue;
+          failedIndices.push(j);
+          const p = activePrompts[j];
+          if (!p) continue;
+          failedPromptIds.push(p.id);
+          if (firstFailureId === undefined) {
+            firstFailureId = p.id;
+            firstFailureError = o.error;
+          }
+          if (p.frontmatter.rollbackOnFail === true && hardStopPrompt === null) {
+            hardStopPrompt = p;
+            hardStopOutcome = o;
+          }
+        }
+
+        if (hardStopPrompt !== null && hardStopOutcome !== null) {
+          // Hard stop requested by the prompt itself. Roll back to the last
+          // good checkpoint (if any), then terminate the run.
+          if (this.checkpoint && lastGoodSha.length > 0) {
+            try {
+              await this.checkpoint.rollback(lastGoodSha);
+            } catch (rollbackErr) {
+              console.error("[Orchestrator] rollback failed:", rollbackErr);
+            }
+          }
           await updateRunStatus(this.runId, "failed", this.db);
           await clearResumeState(this.db, this.runId);
+          await this.emit({
+            type: "run.failed",
+            failedAtPromptId: hardStopPrompt.id,
+            error: hardStopOutcome.error,
+          });
           return {
             status: "failed",
             totalCostUsd: context.accumulatedCostUsd,
             totalDurationMs: Date.now() - startTime,
             completedPrompts: context.currentPromptIndex,
-            error: "internal: failed outcome missing",
+            failedPromptId: hardStopPrompt.id,
+            failedPromptIds: [...failedPromptIds],
+            error: hardStopOutcome.error,
           };
         }
 
-        if (
-          failedPrompt.frontmatter.rollbackOnFail === true &&
-          this.checkpoint &&
-          lastGoodSha.length > 0
-        ) {
-          try {
-            await this.checkpoint.rollback(lastGoodSha);
-          } catch (rollbackErr) {
-            console.error("[Orchestrator] rollback failed:", rollbackErr);
-          }
-        }
-
-        await updateRunStatus(this.runId, "failed", this.db);
-        await clearResumeState(this.db, this.runId);
-        await this.emit({
-          type: "run.failed",
-          failedAtPromptId: failedPrompt.id,
-          error: failedOutcome.error,
-        });
-        return {
-          status: "failed",
-          totalCostUsd: context.accumulatedCostUsd,
-          totalDurationMs: Date.now() - startTime,
-          completedPrompts: context.currentPromptIndex,
-          failedPromptId: failedPrompt.id,
-          error: failedOutcome.error,
-        };
-      }
-
-      // ── All prompts in this wave succeeded ────────────────────────────────
-      // Cast: we've ruled out failed/cancelled above.
-      const successes = outcomes as Array<Extract<PromptOutcome, { kind: "succeeded" }>>;
-
-      // Feed execution metadata for each prompt before committing the (single)
-      // checkpoint. Best-effort — failures here must not block commit.
-      let sha = "";
-      if (this.checkpoint) {
-        if (typeof this.checkpoint.setExecutionMeta === "function") {
+        // If the wave was entirely failures (no successes to commit), emit
+        // prompt.failed for telemetry continuity, advance the index, and move
+        // on to the next wave. The orchestrator's per-attempt error reporting
+        // already wrote prompt_executions rows.
+        if (failedIndices.length === outcomes.length) {
           for (let j = 0; j < activePrompts.length; j++) {
             const p = activePrompts[j];
-            const o = successes[j];
-            if (!p || !o) continue;
+            const o = outcomes[j];
+            if (!p || !o || o.kind !== "failed") continue;
+            await this.emit({
+              type: "prompt.failed",
+              promptId: p.id,
+              error: o.error,
+              willRetry: false,
+            });
+            context.currentPromptIndex++;
+          }
+          // Discard any uncommitted working-tree changes the failed prompt
+          // may have left behind so they don't leak into the next wave.
+          if (this.checkpoint && typeof this.checkpoint.discardDirty === "function") {
             try {
-              const usage = mapTokenUsage(o.result.usage);
-              this.checkpoint.setExecutionMeta(p.id, {
-                tokensIn: usage.input,
-                tokensOut: usage.output,
-                tokensCache: usage.cacheRead + usage.cacheCreation,
-                costUsd: o.result.costUsd,
-                durationMs: o.result.durationMs,
-                toolsUsed: Array.from(o.toolsUsed),
-                guardianDecisions: o.guardianDecisions,
+              await this.checkpoint.discardDirty();
+            } catch (discardErr) {
+              console.warn("[Orchestrator] discardDirty failed:", discardErr);
+            }
+          }
+          continue;
+        }
+
+        // ── Partial-success wave: filter to successes, then fall through ──────
+        // Some siblings failed, some succeeded. We commit the successes (so
+        // their work isn't lost) and emit prompt.failed for the failed ones.
+        // `activePrompts` / `activeIndices` / `outcomes` are rebuilt to contain
+        // only successful entries so the downstream checkpoint/bookkeeping
+        // logic doesn't see the failures.
+        if (failedIndices.length > 0) {
+          const failedSet = new Set(failedIndices);
+          const filteredPrompts: PromptDefinition[] = [];
+          const filteredIndices: number[] = [];
+          const filteredOutcomes: PromptOutcome[] = [];
+          for (let j = 0; j < outcomes.length; j++) {
+            const o = outcomes[j];
+            const p = activePrompts[j];
+            const idx = activeIndices[j];
+            if (!o || !p || idx === undefined) continue;
+            if (failedSet.has(j)) {
+              await this.emit({
+                type: "prompt.failed",
+                promptId: p.id,
+                error: o.kind === "failed" ? o.error : "unknown",
+                willRetry: false,
               });
-            } catch (metaErr) {
+              context.currentPromptIndex++;
+              continue;
+            }
+            filteredPrompts.push(p);
+            filteredIndices.push(idx);
+            filteredOutcomes.push(o);
+          }
+          // Rebind locals so the success branch below operates on the filtered
+          // set. (TS const-correctness: we shadow rather than reassign.)
+          activePrompts.length = 0;
+          activeIndices.length = 0;
+          activePrompts.push(...filteredPrompts);
+          activeIndices.push(...filteredIndices);
+          outcomes.length = 0;
+          outcomes.push(...filteredOutcomes);
+        }
+
+        // ── Wave's successful prompts (full success or filtered partial) ──────
+        // Cast: at this point every remaining outcome is `succeeded`.
+        const successes = outcomes as Array<Extract<PromptOutcome, { kind: "succeeded" }>>;
+
+        // Feed execution metadata for each prompt before committing the (single)
+        // checkpoint. Best-effort — failures here must not block commit.
+        let sha = "";
+        if (this.checkpoint) {
+          if (typeof this.checkpoint.setExecutionMeta === "function") {
+            for (let j = 0; j < activePrompts.length; j++) {
+              const p = activePrompts[j];
+              const o = successes[j];
+              if (!p || !o) continue;
+              try {
+                const usage = mapTokenUsage(o.result.usage);
+                this.checkpoint.setExecutionMeta(p.id, {
+                  tokensIn: usage.input,
+                  tokensOut: usage.output,
+                  tokensCache: usage.cacheRead + usage.cacheCreation,
+                  costUsd: o.result.costUsd,
+                  durationMs: o.result.durationMs,
+                  toolsUsed: Array.from(o.toolsUsed),
+                  guardianDecisions: o.guardianDecisions,
+                });
+              } catch (metaErr) {
+                console.error(
+                  `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${p.id}:`,
+                  metaErr,
+                );
+              }
+            }
+          }
+          // For parallel waves, attribute the single commit to the FIRST prompt
+          // of the wave (its id makes the commit message stable in git log).
+          const headPrompt = activePrompts[0];
+          const headSuccess = successes[0];
+          if (headPrompt && headSuccess) {
+            try {
+              sha = await this.checkpoint.commit(headPrompt.id, headSuccess.executionId);
+              lastGoodSha = sha;
+              await this.emit({
+                type: "prompt.checkpoint_created",
+                promptId: headPrompt.id,
+                sha,
+              });
+            } catch (err) {
               console.error(
-                `[Orchestrator] checkpoint.setExecutionMeta failed for prompt ${p.id}:`,
-                metaErr,
+                `[Orchestrator] checkpoint.commit failed for wave starting at ${headPrompt.id}:`,
+                err,
               );
             }
           }
         }
-        // For parallel waves, attribute the single commit to the FIRST prompt
-        // of the wave (its id makes the commit message stable in git log).
-        const headPrompt = activePrompts[0];
-        const headSuccess = successes[0];
-        if (headPrompt && headSuccess) {
-          try {
-            sha = await this.checkpoint.commit(headPrompt.id, headSuccess.executionId);
-            lastGoodSha = sha;
-            await this.emit({
-              type: "prompt.checkpoint_created",
-              promptId: headPrompt.id,
-              sha,
-            });
-          } catch (err) {
-            console.error(
-              `[Orchestrator] checkpoint.commit failed for wave starting at ${headPrompt.id}:`,
-              err,
-            );
+
+        // Patch every successful prompt_executions row with the wave's sha
+        // (so resume/inspection can locate the commit per prompt).
+        if (sha.length > 0) {
+          for (const o of successes) {
+            await setCheckpointShaOnExecution(this.db, o.executionId, sha);
           }
         }
-      }
 
-      // Patch every successful prompt_executions row with the wave's sha
-      // (so resume/inspection can locate the commit per prompt).
-      if (sha.length > 0) {
-        for (const o of successes) {
-          await setCheckpointShaOnExecution(this.db, o.executionId, sha);
+        // Bookkeeping: advance to the LAST index of the wave, emit completed
+        // events in original order, and bump currentPromptIndex by N.
+        const lastIdx = activeIndices[activeIndices.length - 1];
+        if (typeof lastIdx === "number") {
+          await updateLastSucceededIndex(this.db, this.runId, lastIdx);
         }
-      }
-
-      // Bookkeeping: advance to the LAST index of the wave, emit completed
-      // events in original order, and bump currentPromptIndex by N.
-      const lastIdx = activeIndices[activeIndices.length - 1];
-      if (typeof lastIdx === "number") {
-        await updateLastSucceededIndex(this.db, this.runId, lastIdx);
-      }
-      for (let j = 0; j < activePrompts.length; j++) {
-        const p = activePrompts[j];
-        const o = successes[j];
-        if (!p || !o) continue;
-        await this.emit({
-          type: "prompt.completed",
-          promptId: p.id,
-          tokens: mapTokenUsage(o.result.usage),
-          costUsd: o.result.costUsd,
-        });
-        context.currentPromptIndex++;
+        for (let j = 0; j < activePrompts.length; j++) {
+          const p = activePrompts[j];
+          const o = successes[j];
+          if (!p || !o) continue;
+          await this.emit({
+            type: "prompt.completed",
+            promptId: p.id,
+            tokens: mapTokenUsage(o.result.usage),
+            costUsd: o.result.costUsd,
+          });
+          context.currentPromptIndex++;
+        }
+      } catch (waveErr) {
+        // Per-wave isolation: an unexpected error inside the wave loop
+        // (DB transient, network blip during updateRunStatus, etc.)
+        // would previously escape `run()` and kill the entire run, even
+        // when 359/360 prompts had already succeeded. Log loudly, record
+        // each prompt in the wave as a failure for bookkeeping, and let
+        // the next wave proceed. CancelledError still propagates so
+        // explicit user cancels behave as before.
+        if (waveErr instanceof CancelledError) {
+          await updateRunStatus(this.runId, "cancelled", this.db);
+          return cancelledResult();
+        }
+        const msg = errorMessage(waveErr);
+        console.error(
+          `[Orchestrator] uncaught wave error at wave ${wave.wave} (startIndex=${wave.startIndex}): ${msg}`,
+          waveErr,
+        );
+        for (const p of wave.prompts) {
+          if (!failedPromptIds.includes(p.id)) failedPromptIds.push(p.id);
+          if (firstFailureId === undefined) {
+            firstFailureId = p.id;
+            firstFailureError = msg;
+          }
+          await this.emit({
+            type: "prompt.failed",
+            promptId: p.id,
+            error: msg,
+            willRetry: false,
+          }).catch(() => undefined);
+          context.currentPromptIndex++;
+        }
       }
     }
 
-    // All waves completed.
+    // All waves attempted. Branch on whether any prompt ultimately failed.
     const totalDurationMs = Date.now() - startTime;
+    if (failedPromptIds.length > 0) {
+      // Some prompts exhausted retries — the run is reported as failed but
+      // every wave got its chance. We surface the first failure for the
+      // legacy `run.failed` event and stash the full list in the result.
+      await updateRunStatus(this.runId, "failed", this.db);
+      await clearResumeState(this.db, this.runId);
+      const failedAtPromptId = firstFailureId ?? failedPromptIds[0] ?? "";
+      const errorMsg =
+        firstFailureError ?? `${failedPromptIds.length} prompt(s) failed after exhausting retries`;
+      await this.emit({
+        type: "run.failed",
+        failedAtPromptId,
+        error: errorMsg,
+      });
+      return {
+        status: "failed",
+        totalCostUsd: context.accumulatedCostUsd,
+        totalDurationMs,
+        completedPrompts: sortedPrompts.length - failedPromptIds.length,
+        failedPromptId: failedAtPromptId,
+        failedPromptIds: [...failedPromptIds],
+        error: errorMsg,
+      };
+    }
+
     await updateRunStatus(this.runId, "completed", this.db);
     await clearResumeState(this.db, this.runId);
     await this.emit({
@@ -1134,18 +1346,29 @@ export class Orchestrator {
     // Parallel-wave hardening: stagger the spawn so multiple Claude CLI
     // siblings don't hit the OAuth-token refresh in the same millisecond.
     // Observed on Windows that simultaneous spawns frequently hung, leaving
-    // some siblings in "Esperando salida..." indefinitely. A small random
-    // jitter eliminates that race on attempt 1; on retries the existing
-    // backoff already provides separation.
-    if (opts.ignoreContinueSession && attempt === 1 && this.parallelStaggerMaxMs > 0) {
+    // some siblings in "Esperando salida..." indefinitely. Apply on EVERY
+    // attempt — retries that fire after the backoff still need separation
+    // because siblings often complete their backoff in the same window
+    // and would re-collide. Previously only attempt 1 staggered, which let
+    // retry waves reproduce the exact bug this constant exists to prevent.
+    const applyStagger = async (): Promise<boolean> => {
+      if (!opts.ignoreContinueSession || this.parallelStaggerMaxMs <= 0) return true;
       const jitter = Math.floor(Math.random() * this.parallelStaggerMaxMs);
-      if (jitter > 0) {
-        await sleep(jitter, this.pauseController.getSignal()).catch(() => {});
-        if (this.pauseController.isCancelled()) {
-          return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
-        }
-      }
+      if (jitter <= 0) return true;
+      await sleep(jitter, this.pauseController.getSignal()).catch(() => undefined);
+      return !this.pauseController.isCancelled();
+    };
+
+    if (!(await applyStagger())) {
+      return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
     }
+
+    // Guardian intervention counter PERSISTS across retries so a prompt that
+    // already consumed N interventions on attempt 1 doesn't get a fresh
+    // budget on attempt 2 (which would let pathological loops burn
+    // maxAttempts × maxInterventions turns before aborting). Declared
+    // outside the retry loop on purpose.
+    let guardianInterventionCount = 0;
 
     while (attempt <= maxAttempts) {
       let executionId: string;
@@ -1180,7 +1403,6 @@ export class Orchestrator {
       const heartbeat = startPromptHeartbeat(this.db, executionId);
       try {
         try {
-          let guardianInterventionCount = 0;
           let nextPromptText: string | null = null;
           let nextResumeSessionId: string | null = null;
           let result: ExecutionResult;
@@ -1207,13 +1429,30 @@ export class Orchestrator {
               }
             }
 
+            // Retry escalation: a prompt that failed the previous attempt
+            // gets a more generous idle timeout on the next try, on the
+            // theory that the previous failure was caused by slow stdout
+            // rather than a genuine hang. Multiplier grows with attempt:
+            // 1.5x on attempt 2, 2.25x on attempt 3, capped at 10 minutes.
+            // No-op for attempt 1.
+            if (attempt > 1) {
+              const idleBase = claudeOpts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+              const escalated = Math.min(
+                Math.floor(idleBase * 1.5 ** (attempt - 1)),
+                10 * 60 * 1000,
+              );
+              if (escalated > idleBase) {
+                claudeOpts.idleTimeoutMs = escalated;
+              }
+            }
+
             if (nextPromptText !== null) {
               // Guardian feeding a follow-up answer back into the same session.
               claudeOpts.prompt = nextPromptText;
               if (nextResumeSessionId !== null && nextResumeSessionId.length > 0) {
                 claudeOpts.resumeSessionId = nextResumeSessionId;
               }
-            } else if (this.guardian) {
+            } else if (this.guardian && prompt.frontmatter.guardian !== false) {
               const injection = this.guardian.getInjector().inject(claudeOpts.prompt);
               claudeOpts.prompt = injection.prompt;
             }
@@ -1225,24 +1464,36 @@ export class Orchestrator {
             await proc.start();
 
             const pauseController = this.pauseController;
+            // Cancellation watcher with explicit cleanup. `.unref()` keeps
+            // the timer from blocking process shutdown when the run is
+            // already done. The interval handle is also captured outside
+            // the executor so we can clear it from the `finally` of the
+            // race below — previously a rejection from `proc.wait()` that
+            // raced ahead of the cancel check could leave the interval
+            // alive until `proc.wait()`'s `.finally()` eventually ran.
+            let checkCancel: NodeJS.Timeout | null = null;
             const cancelPromise = new Promise<never>((_resolve, reject) => {
-              const checkCancel = setInterval(() => {
+              checkCancel = setInterval(() => {
                 if (pauseController.isCancelled()) {
-                  clearInterval(checkCancel);
-                  void proc.kill("user cancelled");
+                  if (checkCancel) clearInterval(checkCancel);
+                  checkCancel = null;
+                  void proc.kill("user cancelled").catch(() => undefined);
                   reject(new CancelledError(pauseController.getCancelReason()));
                 }
               }, 500);
-              proc
-                .wait()
-                .finally(() => clearInterval(checkCancel))
-                .catch(() => undefined);
+              checkCancel.unref?.();
             });
 
             try {
               result = await Promise.race([proc.wait(), cancelPromise]);
             } catch (raceErr) {
               if (raceErr instanceof CancelledError) {
+                // Await the kill we issued in the watcher so the child is
+                // actually gone before we move on — otherwise the next
+                // wave can spawn while a still-alive claude.exe holds
+                // file handles or the OAuth refresh token, producing
+                // EBUSY / spawn contention on Windows.
+                await proc.kill("user cancelled").catch(() => undefined);
                 await updatePromptExecution(executionId, "failed", null, "", this.db, {
                   code: "CANCELLED",
                   message: raceErr.message,
@@ -1250,6 +1501,9 @@ export class Orchestrator {
                 return { kind: "cancelled", reason: raceErr.message };
               }
               throw raceErr;
+            } finally {
+              if (checkCancel) clearInterval(checkCancel);
+              checkCancel = null;
             }
 
             for (const event of result.capturedEvents) {
@@ -1283,7 +1537,7 @@ export class Orchestrator {
 
             addUsage(context, mapTokenUsage(result.usage), result.costUsd);
 
-            if (this.guardian) {
+            if (this.guardian && prompt.frontmatter.guardian !== false) {
               const { text: lastAssistantMessage, hasToolUse } = extractLastAssistantText(result);
               const recentMessages = extractRecentAssistantTexts(result.capturedEvents, 3);
               const promptContext = buildPromptContext(prompt);
@@ -1394,6 +1648,12 @@ export class Orchestrator {
           if (willRetry) {
             await sleep(decision.waitMs, this.pauseController.getSignal()).catch(() => {});
             if (this.pauseController.isCancelled()) {
+              return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
+            }
+            // Re-stagger before the next attempt in a parallel wave —
+            // siblings often finish their backoff in the same window and
+            // would re-collide on the OAuth refresh without a fresh jitter.
+            if (!(await applyStagger())) {
               return { kind: "cancelled", reason: this.pauseController.getCancelReason() };
             }
             attempt++;

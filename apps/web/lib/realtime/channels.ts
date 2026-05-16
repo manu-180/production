@@ -4,6 +4,7 @@
  */
 export const channels = {
   runEvents: (runId: string) => `run-events:${runId}`,
+  runExecutions: (runId: string) => `run-executions:${runId}`,
   outputChunks: (promptExecutionId: string) => `output-chunks:${promptExecutionId}`,
   runSummary: (userId: string) => `run-summary:${userId}`,
 } as const;

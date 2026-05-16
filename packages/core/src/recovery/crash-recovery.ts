@@ -60,6 +60,13 @@ export interface RecoverOrphanedOptions {
   logger?: CrashRecoveryLogger;
   /** Time source. Defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * Run IDs to skip even if they look stale. Used by the in-process periodic
+   * sweeper to avoid touching runs the current worker owns (whose first
+   * heartbeat may not have landed yet, leaving `last_heartbeat_at` NULL and
+   * falsely matching the orphan filter).
+   */
+  excludeRunIds?: ReadonlySet<string>;
 }
 
 export interface RecoverOrphanedResult {
@@ -84,6 +91,7 @@ export async function recoverOrphanedRuns(
   const logger = opts.logger;
   const now = opts.now ?? Date.now;
   const cutoffIso = new Date(now() - staleMs).toISOString();
+  const exclude = opts.excludeRunIds ?? new Set<string>();
 
   const recovered: string[] = [];
   const errored: string[] = [];
@@ -113,6 +121,10 @@ export async function recoverOrphanedRuns(
 
   for (const row of rows) {
     if (typeof row.id !== "string" || row.id.length === 0) continue;
+    if (exclude.has(row.id)) {
+      logger?.info?.({ runId: row.id }, "[CrashRecovery] skipping run owned by current worker");
+      continue;
+    }
     try {
       const update = await db
         .from("runs")

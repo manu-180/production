@@ -37,6 +37,7 @@ order: 1                   # Optional: execution order (1-based, auto-assigned i
 depends_on: []             # Optional: list of prompt IDs that must complete first
 working_dir: ./src         # Optional: override the run-level working directory
 timeout: 300               # Optional: seconds before Conductor kills the process (default: 300)
+wave: 3                    # Optional: explicit wave number (see "Parallel waves" below)
 retry:
   max_attempts: 3          # Optional: total attempts including first (default: 1 = no retry)
   delay_seconds: 10        # Optional: base delay between attempts (exponential backoff applied)
@@ -47,6 +48,94 @@ skip_on_error: false       # Optional: continue the run even if this prompt ulti
 checkpoint: true           # Optional: create a Git commit after this prompt succeeds
 ---
 ```
+
+---
+
+## Parallel waves
+
+Conductor groups consecutive prompts that share the same **wave number** and
+runs them in parallel (capped at 2 concurrent Claude processes by default).
+Waves themselves execute **sequentially** in ascending order — wave 2 cannot
+start until every prompt of wave 1 finishes.
+
+### Declaring a wave via filename (recommended)
+
+The plan loader derives `wave` from the filename prefix. Add a single letter
+after the number to mark siblings of the same wave:
+
+```
+01-setup.md         # wave 1
+02a-api-routes.md   # wave 2  ┐ run in parallel
+02b-ui-pages.md     # wave 2  ┘ (same wave number → siblings)
+03-deploy.md        # wave 3
+```
+
+Any decorative letter prefix works (`T1-`, `W1-`, `wave1-`, `v1-`). The match
+is case-insensitive and tolerant of leading zeros (`001-foo.md` → wave 1).
+
+#### Block sub-steps (`__NN_`)
+
+For larger plans you can organize prompts into *blocks* with sub-steps. The
+double-underscore separator splits a block prefix from its sub-step number:
+
+```
+T3_billing-core__01_schema.md   # block T3, sub-step 01
+T3_billing-core__02_rls.md      # block T3, sub-step 02 — runs AFTER 01
+T3_billing-core__03_api.md      # block T3, sub-step 03 — runs AFTER 02
+```
+
+Sub-steps inside the same block run **sequentially** (each `__NN_` is its
+own wave). To run sub-steps in parallel, drop the `__NN_` and use trailing
+letters instead (`T3a_…`, `T3b_…`).
+
+### Declaring a wave via frontmatter
+
+When the filename convention does not fit, set `wave` explicitly. Two prompts
+with the same `wave` value run in parallel **only if they are adjacent after
+sorting** — the wave grouper does not reorder prompts to merge non-consecutive
+matches.
+
+```yaml
+---
+id: api-routes
+title: "Implement API routes"
+order: 10
+wave: 2
+---
+```
+
+```yaml
+---
+id: ui-pages
+title: "Implement UI pages"
+order: 11
+wave: 2
+---
+```
+
+### Concurrency cap
+
+The orchestrator runs at most **2 sibling Claude processes** per wave by
+default. This cap exists because three concurrent processes on Windows
+contended on the OAuth token refresh, leaving one or two siblings hung in
+`Esperando salida...`. If a wave has three siblings, two run in parallel
+and the third starts as soon as one finishes.
+
+The cap is configurable via the `parallelConcurrencyCap` option when
+constructing the orchestrator (defaults to `PARALLEL_CONCURRENCY_CAP` in
+`packages/core/src/orchestrator/orchestrator.ts`).
+
+### Caveats
+
+- `continueSession: true` is **ignored** inside a parallel wave — siblings
+  cannot share a Claude session id. The orchestrator logs a warning for
+  every affected prompt.
+- Parallel siblings get a tighter idle timeout (default 120 s) so a hung
+  sibling fails fast instead of burning the wall-clock budget on a stuck
+  process. Set `idleTimeoutMs` explicitly to lower this further.
+- A small random stagger (up to 5 s) is added to each sibling's spawn time
+  to avoid simultaneous OAuth refreshes — this is observable as a brief
+  delay before the second sibling starts.
 
 ### Field Details
 

@@ -85,7 +85,7 @@ export function PromptCard({
             {duration && <span>⏱ {duration}</span>}
             {totalTokens > 0 && <span>🔣 {formatTokens(totalTokens)}</span>}
             {execution.cost_usd > 0 && <span>💵 {formatCostUsd(execution.cost_usd)}</span>}
-            {execution.attempt > 0 && <span>↻ intento {execution.attempt + 1}</span>}
+            {execution.attempt > 1 && <span>↻ intento {execution.attempt}</span>}
           </div>
         </div>
 

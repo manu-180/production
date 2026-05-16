@@ -41,11 +41,16 @@ describe("orphan-cleanup", () => {
   });
 
   describe("cleanupOrphanClaudeProcesses", () => {
-    it("logs found_orphans with count when processes exist", async () => {
+    it("kills processes whose parent is no longer alive (true orphans)", async () => {
       const warnSpy = vi.spyOn(logger, "warn");
       const infoSpy = vi.spyOn(logger, "info");
 
-      // listWindows / listUnix via execFile — return 2 processes (Windows JSON format)
+      // Pick parent pids that will return ESRCH on `process.kill(pid, 0)` so
+      // the orphan filter classifies them as orphaned. PID 0 / very large
+      // PIDs reliably yield "no such process" on Windows and POSIX without
+      // requiring special permissions.
+      const deadParent = 2_147_483_640;
+
       execFileMock.mockImplementation(
         (
           cmd: string,
@@ -56,8 +61,8 @@ describe("orphan-cleanup", () => {
           if (cmd === "powershell.exe") {
             callback(null, {
               stdout: JSON.stringify([
-                { ProcessId: 1234, ParentProcessId: 1, CommandLine: "claude.exe" },
-                { ProcessId: 5678, ParentProcessId: 1, CommandLine: "claude.exe" },
+                { ProcessId: 1234, ParentProcessId: deadParent, CommandLine: "claude.exe" },
+                { ProcessId: 5678, ParentProcessId: deadParent, CommandLine: "claude.exe" },
               ]),
               stderr: "",
             });
@@ -72,12 +77,47 @@ describe("orphan-cleanup", () => {
 
       expect(result).toEqual({ found: 2, killed: 2 });
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ count: 2 }),
+        expect.objectContaining({ orphans: 2, total: 2 }),
         "orphan-cleanup.found_orphans",
       );
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({ pid: 1234 }),
         "orphan-cleanup.kill_attempt",
+      );
+    });
+
+    it("skips processes whose parent is still alive (not orphans)", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+
+      // Use the current Node process pid as parent — guaranteed alive.
+      const liveParent = process.pid;
+
+      execFileMock.mockImplementation(
+        (
+          cmd: string,
+          _args: string[],
+          _opts: unknown,
+          callback: (err: null, result: { stdout: string; stderr: string }) => void,
+        ) => {
+          if (cmd === "powershell.exe") {
+            callback(null, {
+              stdout: JSON.stringify([
+                { ProcessId: 1234, ParentProcessId: liveParent, CommandLine: "claude.exe" },
+              ]),
+              stderr: "",
+            });
+          } else {
+            callback(null, { stdout: "", stderr: "" });
+          }
+        },
+      );
+
+      const result = await cleanupOrphanClaudeProcesses();
+
+      expect(result).toEqual({ found: 1, killed: 0 });
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ totalSeen: 1, skipped: 1 }),
+        expect.stringContaining("none_truly_orphaned"),
       );
     });
 

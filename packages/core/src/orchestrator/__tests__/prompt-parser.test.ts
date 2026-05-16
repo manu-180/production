@@ -35,10 +35,10 @@ title: Solo
 Body only.
 `;
     const parsed = parsePromptFile("foo.md", raw);
-    expect(parsed.frontmatter.continueSession).toBe(false);
+    expect(parsed.frontmatter.continueSession).toBe(true);
     expect(parsed.frontmatter.allowedTools).toEqual(["Edit", "Write", "Read", "Bash"]);
-    expect(parsed.frontmatter.permissionMode).toBe("default");
-    expect(parsed.frontmatter.maxTurns).toBe(50);
+    expect(parsed.frontmatter.permissionMode).toBe("bypassPermissions");
+    expect(parsed.frontmatter.maxTurns).toBe(20);
     expect(parsed.frontmatter.timeoutMs).toBe(600_000);
     expect(parsed.frontmatter.retries).toBeUndefined();
     expect(parsed.frontmatter.requiresApproval).toBe(false);
@@ -97,7 +97,7 @@ Body
     const parsed = parsePromptFile("bad.md", raw);
     // Either yaml threw (warnings recorded) OR validation failed (also warnings).
     // What matters is parsing did not throw and a usable frontmatter was produced.
-    expect(parsed.frontmatter.permissionMode).toBe("default");
+    expect(parsed.frontmatter.permissionMode).toBe("bypassPermissions");
     expect(parsed.frontmatter.allowedTools).toBeDefined();
   });
 
@@ -117,7 +117,7 @@ Body
 
   it("handles empty file gracefully", () => {
     const parsed = parsePromptFile("empty.md", "");
-    expect(parsed.frontmatter.permissionMode).toBe("default");
+    expect(parsed.frontmatter.permissionMode).toBe("bypassPermissions");
     expect(parsed.content).toBe("");
   });
 
@@ -202,6 +202,48 @@ Body
     it("tolerates leading zeros ('001-foo.md' → 1)", () => {
       const parsed = parsePromptFile("001-foo.md", "body");
       expect(parsed.frontmatter.wave).toBe(1);
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sub-step convention (Tnn_<scope>__NN_<title>.md)
+    // ─────────────────────────────────────────────────────────────────────────
+    // These must be SEQUENTIAL, not parallel siblings, even though they
+    // share the same `Tnn_` prefix — the `__NN_` suffix encodes ordering.
+    it("encodes sub-step as wave when filename has __NN_ suffix", () => {
+      const a = parsePromptFile("T3_billing-core__01_foundation.md", "body");
+      const b = parsePromptFile("T3_billing-core__02_surface.md", "body");
+      expect(a.frontmatter.wave).toBe(3001);
+      expect(b.frontmatter.wave).toBe(3002);
+      // Sequential, not parallel — different wave numbers.
+      expect(a.frontmatter.wave).not.toBe(b.frontmatter.wave);
+    });
+
+    it("supports two-digit block number with sub-step ('T10_x__03_y.md' → 10003)", () => {
+      const parsed = parsePromptFile("T10_bot-intelligence-tools__03_runner.md", "body");
+      expect(parsed.frontmatter.wave).toBe(10003);
+    });
+
+    it("preserves single-prefix parallel siblings (no double-underscore)", () => {
+      // T3a_ and T3b_ still share wave 3 — that convention is for explicit
+      // parallel siblings and must NOT be affected by the sub-step fix.
+      const a = parsePromptFile("T3a-foundation.md", "body");
+      const b = parsePromptFile("T3b-surface.md", "body");
+      expect(a.frontmatter.wave).toBe(3);
+      expect(b.frontmatter.wave).toBe(3);
+    });
+
+    it("does not treat a single underscore as a sub-step separator", () => {
+      // '10_foo.md' is wave 10, not 10000 — only `__NN_` (double underscore)
+      // triggers the sub-step encoding, to preserve the existing
+      // `<num>_<title>` convention.
+      const parsed = parsePromptFile("10_foo_bar.md", "body");
+      expect(parsed.frontmatter.wave).toBe(10);
+    });
+
+    it("frontmatter wave still overrides sub-step encoding", () => {
+      const raw = "---\nwave: 42\n---\nbody";
+      const parsed = parsePromptFile("T3_x__01_y.md", raw);
+      expect(parsed.frontmatter.wave).toBe(42);
     });
   });
 });

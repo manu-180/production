@@ -8,8 +8,17 @@ export interface ModelPricing {
 }
 
 export const PRICING_USD_PER_MTOK: Readonly<Record<string, ModelPricing>> = {
+  // Latest Sonnet is 4.6 — there is no public claude-sonnet-4-7. Keep the
+  // 4-7 key as an alias so cost lookups for misconfigured callers still
+  // resolve to Sonnet pricing instead of falling through to the Sonnet
+  // fallback below (which is correct, but masks the misconfiguration).
+  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   "claude-sonnet-4-7": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  // Opus 4.7 IS released; 4.6 also valid. Both at Opus pricing.
   "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-opus-4-6": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  // Latest Haiku is 4.5.
+  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
   "claude-haiku-4-7": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 };
 

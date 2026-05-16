@@ -11,7 +11,7 @@ const BASE_SETTINGS = {
   theme: "light" as const,
   color_theme: "conductor-classic",
   auto_approve_low_risk: false,
-  default_model: "claude-sonnet-4-7",
+  default_model: "claude-sonnet-4-6",
   git_auto_commit: false,
   git_auto_push: false,
   notification_channels: {},

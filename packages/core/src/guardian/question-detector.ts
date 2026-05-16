@@ -229,7 +229,16 @@ export class QuestionDetector {
           {
             model,
             max_tokens: 256,
-            system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+            // `cache_control` is supported by the Anthropic HTTP API but
+            // missing from `TextBlockParam` in @anthropic-ai/sdk 0.32.1. Cast
+            // is runtime-safe; SDK forwards unknown fields verbatim.
+            system: [
+              {
+                type: "text",
+                text: SYSTEM_PROMPT,
+                cache_control: { type: "ephemeral" },
+              },
+            ] as unknown as Anthropic.TextBlockParam[],
             messages: [
               {
                 role: "user",
@@ -327,13 +336,27 @@ function hasNumberedListInLastNLines(message: string, lastN: number, minItems: n
 }
 
 /**
- * Returns true when any sentence contains the form `X or Y`, suggesting two
- * mutually-exclusive options. Heuristic: a sentence with " or " surrounded by
- * non-trivial words on both sides.
+ * Returns true when a sentence contains "X or Y" AND it's plausibly a
+ * question — i.e. the sentence either ends with a `?` or starts with a
+ * common interrogative verb. The earlier regex
+ * (`\b\w[\w/-]{1,}\s+or\s+\w[\w/-]{1,}\b`) matched any clause containing
+ * the literal word "or" — extremely common in normal assistant output
+ * ("file was created or updated", "configure or skip"). Every match
+ * pushed the heuristic score by 0.15 into the LLM-disambiguation band,
+ * burning one Anthropic API call per prompt for noise. Tightened so the
+ * heuristic only fires when there's a credible question signal.
  */
 function hasOrBetweenOptionsInSentence(message: string): boolean {
   const sentences = message.split(/(?<=[.!?])\s+/u);
-  return sentences.some((s) => /\b\w[\w/-]{1,}\s+or\s+\w[\w/-]{1,}\b/i.test(s));
+  return sentences.some((s) => {
+    if (!/\b\w[\w/-]{1,}\s+or\s+\w[\w/-]{1,}\b/i.test(s)) return false;
+    // Must look like a question: ends with `?` (allowing trailing
+    // punctuation/quotes) OR begins with a typical question verb.
+    if (/[?？]\s*[)"'`\]]*$/u.test(s.trim())) return true;
+    return /^\s*(?:should|would|could|do|does|did|can|may|shall|will|which|what|whether)\b/i.test(
+      s,
+    );
+  });
 }
 
 /**

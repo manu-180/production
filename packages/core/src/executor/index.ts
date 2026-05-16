@@ -41,6 +41,7 @@ export { StreamParser } from "./stream-parser.js";
 export {
   TimeoutManager,
   DEFAULT_TIMEOUT_MS,
+  DEFAULT_IDLE_TIMEOUT_MS,
   DEFAULT_GRACE_MS,
   softKill,
   hardKill,

@@ -27,6 +27,22 @@ const MAX_QUEUE_SIZE = 10_000;
 const RATE_LIMIT_PATTERN = /rate[\s_-]?limit/i;
 const AUTH_PATTERN = /(unauthor|invalid[\s_-]?token|authentication)/i;
 
+/**
+ * Maximum time we wait for stdout/stderr `close` events after the process
+ * has already exited. On Windows, when Claude CLI spawns MCP server
+ * subprocesses, those children inherit the parent's stdio handles; even
+ * after `cmd.exe` / `claude.cmd` exits, the OS keeps the pipe write end
+ * open until the MCP processes also exit. That blocks our `closePromise`
+ * indefinitely and the orchestrator hangs on the first prompt waiting for
+ * `wait()` to resolve.
+ *
+ * Once `exit` has fired, the process is gone — any remaining stream data
+ * is from MCP children we don't control. We force-destroy the read end of
+ * the pipes after this grace period so the readline interfaces close and
+ * `wait()` proceeds. The stream buffer up to that point is still captured.
+ */
+const POST_EXIT_STREAM_GRACE_MS = 3_000;
+
 export type FinalStatus = "success" | "error" | "killed" | "timeout";
 
 export interface ExecutionResult {
@@ -96,7 +112,7 @@ export class ClaudeProcess extends EventEmitter {
     this.env = env;
     this.captureEvents = opts.captureEvents ?? true;
     this.maxQueue = opts.maxQueueSize ?? MAX_QUEUE_SIZE;
-    this.modelHint = opts.model ?? "claude-sonnet-4-7";
+    this.modelHint = opts.model ?? "claude-sonnet-4-6";
 
     const timeoutOpts: ConstructorParameters<typeof TimeoutManager>[0] = {
       timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -187,6 +203,19 @@ export class ClaudeProcess extends EventEmitter {
       this.exitCode = code ?? (signal ? 1 : 0);
       this.timeoutMgr.clear();
       log.debug({ code, signal, pid: child.pid }, "claude exited");
+      // Drain whatever the parser still has buffered BEFORE we mark the
+      // stream ended. On Windows the `exit` event fires before stdout's
+      // `close` event drains, and `endStream()` resolves any pending
+      // consumers with `done: true` — any later events flushed from the
+      // partial-line buffer would land in a queue nobody reads. This
+      // matters most for the `result` event, which carries the final
+      // session/usage payload and is frequently the last line.
+      try {
+        const flushed = this.parser.flush();
+        for (const ev of flushed) this.dispatchEvent(ev);
+      } catch (flushErr) {
+        log.warn({ err: flushErr, pid: child.pid }, "claude.process.flush_on_exit_failed");
+      }
       if (this.finalStatus === null) {
         if (this.timeoutMgr.didIdleTimeout) {
           this.finalStatus = "timeout";
@@ -195,13 +224,40 @@ export class ClaudeProcess extends EventEmitter {
         } else if (this.killReason !== null) {
           this.finalStatus = "killed";
         } else if ((code ?? 0) === 0) {
-          this.finalStatus = "success";
+          // If the process exited cleanly but we observed a stream-level
+          // error (rate-limit / auth detected in stderr, stdin write
+          // failure, etc.) — promote to "error" so the orchestrator
+          // doesn't treat the run as silently successful. Without this,
+          // a rate-limited Claude that prints the message to stderr and
+          // exits 0 would report success with no retry path.
+          this.finalStatus = this.streamError !== null ? "error" : "success";
         } else {
           this.finalStatus = "error";
         }
       }
       this.emit("exit", this.exitCode, signal);
       this.endStream();
+
+      // Defense-in-depth: if `close` doesn't fire on stdout/stderr within
+      // POST_EXIT_STREAM_GRACE_MS, force-destroy the streams. This breaks
+      // the MCP-subprocess deadlock where children inherit the pipes and
+      // keep them open after the parent exits. See constant docs above.
+      setTimeout(() => {
+        if (!child.stdout.destroyed) {
+          log.warn(
+            { pid: child.pid },
+            "claude.process.force_destroy_stdout (MCP child holding pipe?)",
+          );
+          child.stdout.destroy();
+        }
+        if (!child.stderr.destroyed) {
+          log.warn(
+            { pid: child.pid },
+            "claude.process.force_destroy_stderr (MCP child holding pipe?)",
+          );
+          child.stderr.destroy();
+        }
+      }, POST_EXIT_STREAM_GRACE_MS).unref();
     });
 
     this.exitPromise = new Promise<void>((resolve) => {
@@ -212,9 +268,25 @@ export class ClaudeProcess extends EventEmitter {
     // Wait for both exit AND stdio stream close so stderrBuffer is fully
     // populated before wait() reads it. On Windows, the exit event often
     // fires before the readline interfaces finish processing buffered data.
+    //
+    // Belt-and-suspenders against the MCP-subprocess hang: if `close` still
+    // doesn't fire after the watchdog destroyed the streams (extreme
+    // pathological case), fall back to a hard deadline of `exit +
+    // 2 × POST_EXIT_STREAM_GRACE_MS`. By then either the streams closed or
+    // we accept that we'll never see them and proceed with whatever was
+    // captured so far.
     const stdoutClosed = new Promise<void>((r) => child.stdout.once("close", r));
     const stderrClosed = new Promise<void>((r) => child.stderr.once("close", r));
-    this.closePromise = Promise.all([this.exitPromise, stdoutClosed, stderrClosed]).then(() => {});
+    const hardDeadline = this.exitPromise.then(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 2 * POST_EXIT_STREAM_GRACE_MS).unref();
+        }),
+    );
+    this.closePromise = Promise.race([
+      Promise.all([this.exitPromise, stdoutClosed, stderrClosed]).then(() => {}),
+      hardDeadline,
+    ]);
 
     this.stdoutReader = createInterface({
       input: child.stdout,
@@ -261,10 +333,16 @@ export class ClaudeProcess extends EventEmitter {
       });
       this.streamError = err;
       this.emit("error", err);
+      // Stop the child fast so we don't keep burning the wall clock on a
+      // process that's already been told the API rejected it. The kill is
+      // fire-and-forget; the exit handler will promote finalStatus to
+      // "error" because streamError is set.
+      void this.kill("rate-limit").catch(() => undefined);
     } else if (AUTH_PATTERN.test(line)) {
       const err = new ExecutorError(ExecutorErrorCode.AUTH_INVALID, line.trim());
       this.streamError = err;
       this.emit("error", err);
+      void this.kill("auth-invalid").catch(() => undefined);
     }
     this.emit("stderr", line);
   }
@@ -288,12 +366,17 @@ export class ClaudeProcess extends EventEmitter {
       this.resolvedSessionId = event.session_id;
       if (event.model) this.modelHint = event.model;
     } else if (event.type === "result") {
-      this.resultEventUsage = event.usage;
+      // `usage` is optional on the result event schema (Claude CLI error
+      // subtypes sometimes omit it); fall back to assistant-event
+      // aggregation in wait() when null.
+      if (event.usage !== undefined) {
+        this.resultEventUsage = event.usage;
+      }
       if (typeof event.total_cost_usd === "number") {
         this.resultEventCost = event.total_cost_usd;
       }
       if (event.subtype.startsWith("error")) {
-        const errors = (event as Record<string, unknown>).errors;
+        const errors = (event as Record<string, unknown>)["errors"];
         if (Array.isArray(errors) && errors.length > 0) {
           this.resultErrorMessage = String(errors[0]);
         } else if (typeof event.result === "string") {
@@ -393,7 +476,14 @@ export class ClaudeProcess extends EventEmitter {
       const costUsd =
         this.resultEventCost !== null ? this.resultEventCost : calcCost(this.modelHint, usage);
 
-      const finalStatus: FinalStatus = this.finalStatus ?? "success";
+      // Belt-and-suspenders: even if the exit handler didn't promote
+      // streamError → "error" (e.g. wait() resolved before exit emitted
+      // for some pathological path), surface stream-level errors as
+      // explicit failures rather than silent successes.
+      let finalStatus: FinalStatus = this.finalStatus ?? "success";
+      if (finalStatus === "success" && this.streamError !== null) {
+        finalStatus = "error";
+      }
 
       const errorMessage =
         this.resultErrorMessage ??
@@ -433,7 +523,19 @@ export class ClaudeProcess extends EventEmitter {
     this.killReason = reason;
     if (this.finalStatus === null) this.finalStatus = "killed";
     this.timeoutMgr.softThenHard(this.child.pid ?? null);
-    if (this.exitPromise) await this.exitPromise;
+    if (this.exitPromise) {
+      // Hard deadline so a stuck process (MCP children holding pipes,
+      // taskkill that never returns, etc.) cannot block the orchestrator's
+      // cancel/retry path indefinitely. Generous enough to cover the
+      // softThenHard sequence (5s soft + grace + hard) plus a safety
+      // margin. The stream-close watchdog (POST_EXIT_STREAM_GRACE_MS)
+      // already handles the pipe-deadlock case in wait().
+      const HARD_DEADLINE_MS = 60_000;
+      await Promise.race([
+        this.exitPromise,
+        new Promise<void>((resolve) => setTimeout(resolve, HARD_DEADLINE_MS).unref()),
+      ]);
+    }
   }
 }
 

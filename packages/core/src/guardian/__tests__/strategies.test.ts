@@ -290,14 +290,18 @@ describe("LlmStrategy", () => {
 
     expect(sdkMock.messagesCreate).toHaveBeenCalledTimes(1);
     const [args] = sdkMock.messagesCreate.mock.calls[0] ?? [];
+    // `system` is now an array of TextBlockParams (with `cache_control` for
+    // prompt caching) rather than a raw string. Flatten the text fields to
+    // assert on the prompt content without coupling to the block shape.
     const payload = args as {
       model: string;
-      system: string;
+      system: Array<{ type: string; text: string }>;
       messages: Array<{ role: string; content: string }>;
     };
-    expect(payload.model).toBe("claude-sonnet-4-7");
-    expect(payload.system).toContain("technical architect");
-    expect(payload.system).toContain("Respond ONLY with valid JSON");
+    const systemText = payload.system.map((b) => b.text).join("\n");
+    expect(payload.model).toBe("claude-haiku-4-5-20251001");
+    expect(systemText).toContain("technical architect");
+    expect(systemText).toContain("Respond ONLY with valid JSON");
     expect(payload.messages[0]?.content).toContain("Should we use Redis");
   });
 

@@ -130,7 +130,7 @@ async function upsertSettings(supabase: SupabaseClient, userId: string): Promise
     {
       user_id: userId,
       notification_channels: { desktop: true },
-      default_model: process.env["CONDUCTOR_DEFAULT_MODEL"] ?? "claude-sonnet-4-7",
+      default_model: process.env["CONDUCTOR_DEFAULT_MODEL"] ?? "claude-sonnet-4-6",
       auto_approve_low_risk: true,
       git_auto_commit: true,
       git_auto_push: false,

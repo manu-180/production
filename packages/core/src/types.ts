@@ -39,6 +39,7 @@ export interface PromptDefinition {
 
 export interface PromptFrontmatter {
   title?: string;
+  guardian?: boolean;
   continueSession?: boolean;
   allowedTools?: string[];
   permissionMode?: "default" | "acceptEdits" | "bypassPermissions";
@@ -161,6 +162,20 @@ export type RunEvent =
       promptId: string;
       error: string;
       willRetry: boolean;
+    }
+  | {
+      /**
+       * Emitted when a prompt is bypassed without running Claude — either
+       * because it succeeded in a prior run of the same plan
+       * (`already_done`), the API/user asked to skip it (`user_skip`), or
+       * because the run is resuming past it (`resumed_from_index`). The
+       * matching `prompt_executions` row is written with `status='skipped'`
+       * by {@link markPromptSkipped}.
+       */
+      type: "prompt.skipped";
+      promptId: string;
+      reason: "already_done" | "user_skip" | "resumed_from_index";
+      message: string;
     }
   | {
       type: "prompt.rate_limited";

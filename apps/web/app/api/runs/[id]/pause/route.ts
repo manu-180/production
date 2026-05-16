@@ -11,11 +11,13 @@ interface Params {
 /**
  * POST /api/runs/:id/pause — flip a running run to paused.
  *
- * Today the worker observes status transitions on its next poll tick (the
- * RunHandler also exposes an in-memory pause() but that's only reachable
- * from the worker process). When LISTEN/NOTIFY lands, this update should
- * also `pg_notify('conductor_run_signals', <run_id>:pause)` so the worker
- * reacts within ms.
+ * The worker subscribes to `runs` UPDATE events via Supabase Realtime
+ * (per-run channel in `RunControlChannel`) and reacts to this status flip
+ * within ms. The orchestrator honors the pause at the next wave boundary
+ * (mid-prompt cancellation would lose Claude CLI work in progress).
+ *
+ * If realtime is degraded, the channel's 5s reconcile poll is the fallback;
+ * worst case the worker observes the pause within ~5s of the API call.
  */
 export const POST = defineRoute<RunReasonBody, undefined, Params>(
   { rateLimit: "mutation", bodySchema: runReasonBodySchema },
